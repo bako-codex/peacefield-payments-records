@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "firebase": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "firebase-tools@latest",
+        "mcp",
+        "--dir",
+        "C:\\Users\\Peacefield\\Documents\\peacefield-payments-reports",
+        "--only",
+        "auth,firestore,storage"
+      ]
+    }
+  }
+}

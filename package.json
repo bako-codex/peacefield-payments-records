@@ -1,0 +1,24 @@
+{
+  "name": "peacefield-payments-reports",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "vite": "^6.4.5"
+  },
+  "dependencies": {
+    "@firebase/app": "^0.16.4",
+    "@firebase/auth": "^1.13.8",
+    "firebase-admin": "^14.5.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}
