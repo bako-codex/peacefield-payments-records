@@ -109,6 +109,14 @@ function recordCategoryAmounts(record) {
   return amounts;
 }
 
+function getErrorMessage(error, fallback) {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error.message === "string" && error.message.trim()) return error.message;
+  if (error && typeof error.error === "string" && error.error.trim()) return error.error;
+  if (error?.error && typeof error.error.message === "string") return error.error.message;
+  return fallback;
+}
+
 async function apiRequest(path, user, options = {}) {
   const token = await user.getIdToken();
   const response = await fetch(path, {
@@ -126,7 +134,9 @@ async function apiRequest(path, user, options = {}) {
   } catch {
     throw new Error("The server returned an invalid response.");
   }
-  if (!response.ok) throw new Error(result.error || "The request could not be completed.");
+  if (!response.ok) {
+    throw new Error(getErrorMessage(result.error, "The request could not be completed."));
+  }
   return result;
 }
 
@@ -220,12 +230,17 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
         });
         await onAuthenticated(credential.user);
       } catch (registrationError) {
-        await signOut(auth);
-        throw registrationError;
+        const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          throw new Error(`${message} Sign-out also failed: ${getErrorMessage(signOutError, "Please sign out manually.")}`);
+        }
+        throw new Error(message);
       }
     } catch (authError) {
       if (authError.code !== "auth/popup-closed-by-user") {
-        setError(authError.message || "Google sign-in failed. Please try again.");
+        setError(getErrorMessage(authError, "Google sign-in failed. Please try again."));
       }
     } finally {
       onAuthFlowFinished();
