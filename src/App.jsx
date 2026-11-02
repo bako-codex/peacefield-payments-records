@@ -135,7 +135,9 @@ async function apiRequest(path, user, options = {}) {
     throw new Error("The server returned an invalid response.");
   }
   if (!response.ok) {
-    throw new Error(getErrorMessage(result.error, "The request could not be completed."));
+    const error = new Error(getErrorMessage(result.error, "The request could not be completed."));
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
@@ -694,7 +696,7 @@ export default function App() {
         await activateUser(firebaseUser);
       } catch (error) {
         setAuthError(error.message);
-        setAuthStatus("access-denied");
+        setAuthStatus(error.status === 401 || error.status === 403 ? "access-denied" : "server-error");
       }
     });
   }, []);
@@ -713,6 +715,9 @@ export default function App() {
   }
   if (authStatus === "access-denied") {
     return <AccessDeniedPage error={authError} onSignOut={() => signOut(auth)} />;
+  }
+  if (authStatus === "server-error") {
+    return <AccessDeniedPage error={authError} serverError onSignOut={() => signOut(auth)} />;
   }
   return <AuthPage
     onAuthenticated={activateUser}
@@ -764,9 +769,9 @@ function VerificationPage({ user, onSignOut, onVerified }) {
   </div></section></main>;
 }
 
-function AccessDeniedPage({ error, onSignOut }) {
+function AccessDeniedPage({ error, onSignOut, serverError = false }) {
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">ACCESS NOT APPROVED</p><h2>We couldn’t verify access</h2><p>{error}</p><p>Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues.</p></div>
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>We couldn’t verify access</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
     <button className="primary-button full-width" onClick={onSignOut}>Sign out</button>
   </div></section></main>;
 }
