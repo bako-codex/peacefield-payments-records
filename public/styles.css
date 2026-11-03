@@ -1377,6 +1377,7 @@ td:nth-child(9) {
 }
 
 .invite-panel {
+  max-width: 640px;
   margin-bottom: 16px;
   padding: 14px 18px;
   border: 1px solid var(--brand-border);
@@ -1433,17 +1434,42 @@ td:nth-child(9) {
   gap: 10px;
 }
 
+.invite-form-row input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.invite-form-row .apply-filters {
+  flex: 0 0 auto;
+}
+
 .invite-result {
   display: grid;
-  gap: 7px;
+  gap: 8px;
+  max-width: 580px;
   margin-top: 14px;
   color: var(--brand-muted);
   font-size: 0.82rem;
 }
 
+.invite-link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .invite-result a {
+  min-width: 0;
+  flex: 1;
   overflow-wrap: anywhere;
   color: var(--brand-magenta-dark);
+}
+
+.invite-link-row .clear-filter {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .invite-error,
@@ -1644,6 +1670,11 @@ td:nth-child(9) {
 
   .invite-form-row {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invite-link-row {
+    align-items: flex-start;
     flex-direction: column;
   }
 

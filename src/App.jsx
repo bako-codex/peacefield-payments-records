@@ -552,7 +552,13 @@ function InvitationPanel({ user }) {
         </div>
       </form>
       {error && <p className="invite-error" role="alert">{error}</p>}
-      {invite && <div className="invite-result"><span>Invitation email sent to {inviteRecipient}. It expires in 7 days. You can also share this link:</span><a href={invite}>{invite}</a><button type="button" className="clear-filter" onClick={() => navigator.clipboard.writeText(invite)}>Copy invite link</button></div>}
+      {invite && <div className="invite-result">
+        <span>Invitation email sent to {inviteRecipient}. It expires in 7 days. You can also share this link:</span>
+        <div className="invite-link-row">
+          <a href={invite}>{invite}</a>
+          <button type="button" className="clear-filter" onClick={() => navigator.clipboard.writeText(invite)}>Copy invite link</button>
+        </div>
+      </div>}
     </details>
   );
 }
