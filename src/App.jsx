@@ -358,6 +358,124 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
   );
 }
 
+function MonthPicker({ id, label, value, min, max, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [year, setYear] = useState(() => Number(value.slice(0, 4)) || new Date().getUTCFullYear());
+  const pickerRef = useRef(null);
+  const triggerRef = useRef(null);
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(year, index, 1));
+    const monthValue = `${year}-${String(index + 1).padStart(2, "0")}`;
+    return {
+      value: monthValue,
+      shortLabel: new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(date),
+      label: new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: "UTC" }).format(date),
+    };
+  });
+  const selectedLabel = value
+    ? new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })
+      .format(new Date(`${value}-01T00:00:00Z`))
+    : "Select month";
+  const currentDate = new Date();
+  const currentMonth = `${currentDate.getUTCFullYear()}-${String(currentDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const previousYearStart = `${year - 1}-01`;
+  const previousYearEnd = `${year - 1}-12`;
+  const nextYearStart = `${year + 1}-01`;
+  const nextYearEnd = `${year + 1}-12`;
+  const canGoPrevious = (!min || previousYearEnd >= min) && (!max || previousYearStart <= max);
+  const canGoNext = (!min || nextYearEnd >= min) && (!max || nextYearStart <= max);
+  const canSelectCurrent = (!min || currentMonth >= min) && (!max || currentMonth <= max);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointerDown(event) {
+      if (!pickerRef.current?.contains(event.target)) setOpen(false);
+    }
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function chooseMonth(monthValue) {
+    onChange(monthValue);
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  return (
+    <div className="month-field">
+      <span id={`${id}-label`}>{label} <small>inclusive · UTC</small></span>
+      <div className="month-picker" ref={pickerRef}>
+        <button
+          ref={triggerRef}
+          className={`month-trigger${value ? " has-value" : ""}`}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={`${id}-popover`}
+          aria-label={`${label}: ${selectedLabel}`}
+          onClick={() => {
+            if (!open) setYear(Number(value.slice(0, 4)) || new Date().getUTCFullYear());
+            setOpen(!open);
+          }}
+        >
+          <span>{selectedLabel}</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2" /><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01" /></svg>
+        </button>
+        <div
+          id={`${id}-popover`}
+          className="month-popover"
+          role="dialog"
+          aria-label={`Choose ${label.toLocaleLowerCase()} month`}
+          hidden={!open}
+        >
+          <div className="month-picker-heading">
+            <button className="year-step" type="button" aria-label="Previous year" disabled={!canGoPrevious} onClick={() => setYear(year - 1)}>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <span className="month-picker-year" aria-live="polite">{year}</span>
+            <button className="year-step" type="button" aria-label="Next year" disabled={!canGoNext} onClick={() => setYear(year + 1)}>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </div>
+          <div className="month-grid">
+            {months.map((month) => {
+              const disabled = (min && month.value < min) || (max && month.value > max);
+              const inRange = min && max && month.value >= min && month.value <= max;
+              return (
+                <button
+                  key={month.value}
+                  className={`month-option${inRange ? " is-in-range" : ""}`}
+                  type="button"
+                  aria-label={`${month.label} ${year}`}
+                  aria-pressed={value === month.value}
+                  disabled={Boolean(disabled)}
+                  onClick={() => chooseMonth(month.value)}
+                >
+                  {month.shortLabel}
+                </button>
+              );
+            })}
+          </div>
+          <div className="month-picker-actions">
+            <button type="button" className="clear-filter" disabled={!value} onClick={() => chooseMonth("")}>Clear</button>
+            <button type="button" className="clear-filter" disabled={!canSelectCurrent} onClick={() => chooseMonth(currentMonth)}>This month</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomSelect({ label, value, options, onChange, className = "" }) {
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find((option) => option.value === value)?.label || options[0]?.label || "";
@@ -430,7 +548,7 @@ function InvitationPanel({ user }) {
         <label htmlFor="invite-email">Staff email</label>
         <div className="invite-form-row">
           <input id="invite-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="staff@school.com" />
-          <button className="apply-filters" type="submit" disabled={busy}>{busy ? "Sending…" : "Send invite"}</button>
+          <button className="apply-filters" type="submit" disabled={busy}>{busy ? "Sending…" : "Send"}</button>
         </div>
       </form>
       {error && <p className="invite-error" role="alert">{error}</p>}
@@ -657,8 +775,8 @@ function Dashboard({ user }) {
       <PasswordLinkPanel user={user} />
 
       <form className="report-controls" onSubmit={applyDateRange}>
-        <label className="month-field"><span>From <small>inclusive · UTC</small></span><input type="month" value={fromMonth} max={toMonth || undefined} onChange={(event) => setFromMonth(event.target.value)} /></label>
-        <label className="month-field"><span>To <small>inclusive · UTC</small></span><input type="month" value={toMonth} min={fromMonth || undefined} onChange={(event) => setToMonth(event.target.value)} /></label>
+        <MonthPicker id="from-month" label="From" value={fromMonth} max={toMonth} onChange={setFromMonth} />
+        <MonthPicker id="to-month" label="To" value={toMonth} min={fromMonth} onChange={setToMonth} />
         <button className="apply-filters date-apply" type="submit">Apply dates</button>
         <button className="clear-filter" type="button" onClick={() => { setFromMonth(""); setToMonth(""); setAppliedRange({ from: "", to: "" }); setDateError(""); }}>Clear dates</button>
         <label className="search-field">
