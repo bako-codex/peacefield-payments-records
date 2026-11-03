@@ -1381,7 +1381,7 @@ td:nth-child(9) {
   margin-bottom: 16px;
   padding: 14px 18px;
   border: 1px solid var(--brand-border);
-  border-radius: 14px;
+  border-radius: 20px;
   background: #fff;
 }
 
