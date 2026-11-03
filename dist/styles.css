@@ -1378,6 +1378,36 @@ td:nth-child(9) {
   margin-top: 14px;
 }
 
+.account-password-panel {
+  max-width: 620px;
+}
+
+.account-password-help {
+  margin: 12px 0 0;
+  color: var(--brand-muted);
+  font-size: 0.84rem;
+}
+
+.account-password-form {
+  max-width: 420px;
+}
+
+.account-password-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid var(--brand-border);
+  border-radius: 11px;
+  background: #fff;
+  color: var(--brand-ink);
+  font-size: 0.92rem;
+}
+
+.account-password-form input:focus {
+  border-color: var(--brand-magenta);
+  outline: 3px solid rgba(230, 0, 93, 0.1);
+}
+
 .invite-form-row {
   display: flex;
   align-items: center;

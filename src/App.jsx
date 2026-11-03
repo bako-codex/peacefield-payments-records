@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   deleteUser,
+  EmailAuthProvider,
   GoogleAuthProvider,
+  linkWithCredential,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
@@ -437,6 +439,60 @@ function InvitationPanel({ user }) {
   );
 }
 
+function PasswordLinkPanel({ user }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [linked, setLinked] = useState(user.providerData.some(({ providerId }) => providerId === "password"));
+  const isGoogleUser = user.providerData.some(({ providerId }) => providerId === "google.com");
+
+  if (!isGoogleUser || !user.email) return null;
+
+  async function addPassword(event) {
+    event.preventDefault();
+    setError("");
+    if (password !== confirmPassword) {
+      setError("The passwords do not match.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, password);
+      await linkWithCredential(user, credential);
+      setLinked(true);
+      setPassword("");
+      setConfirmPassword("");
+    } catch (linkError) {
+      setError(getErrorMessage(linkError, "Could not add email and password sign-in."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <details className="invite-panel account-password-panel">
+      <summary>{linked ? "Email and password sign-in enabled" : "Add email and password sign-in"}</summary>
+      {linked ? (
+        <p className="auth-message success-message">You can now sign in with {user.email} and the password you set, or continue with Google.</p>
+      ) : (
+        <>
+          <p className="account-password-help">Set a password for {user.email}. This links password sign-in to your existing account.</p>
+          {error && <p className="auth-message error-message" role="alert">{error}</p>}
+          <form className="account-password-form" onSubmit={addPassword}>
+            <label htmlFor="account-password">New password</label>
+            <input id="account-password" type="password" autoComplete="new-password" minLength={6} required value={password} onChange={(event) => setPassword(event.target.value)} />
+            <label htmlFor="account-password-confirm">Confirm password</label>
+            <input id="account-password-confirm" type="password" autoComplete="new-password" minLength={6} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
+            <button className="primary-button" type="submit" disabled={busy}>{busy ? "Adding password…" : "Set password"}</button>
+          </form>
+        </>
+      )}
+    </details>
+  );
+}
+
 function Dashboard({ user }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -598,6 +654,7 @@ function Dashboard({ user }) {
       </header>
 
       <InvitationPanel user={user} />
+      <PasswordLinkPanel user={user} />
 
       <form className="report-controls" onSubmit={applyDateRange}>
         <label className="month-field"><span>From <small>inclusive · UTC</small></span><input type="month" value={fromMonth} max={toMonth || undefined} onChange={(event) => setFromMonth(event.target.value)} /></label>
