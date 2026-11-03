@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Synchronize lockfile and build",
+			"type": "shell",
+			"command": "cmd.exe",
+			"args": [
+				"/d",
+				"/c",
+				"npm install --package-lock-only && npm run build"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}
