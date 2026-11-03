@@ -94,6 +94,8 @@ filtered with the class selector.
 
 ## Deployment and security notes
 
+- Use Node.js 24.x for Vercel builds and functions. Firebase Admin and the
+  resolved Firebase dependencies require a recent Node runtime.
 - Never put Firebase service-account JSON, Brevo keys, or other server
   credentials in the frontend or commit them to source control.
 - Firebase Web App settings are public identifiers, not server credentials.
