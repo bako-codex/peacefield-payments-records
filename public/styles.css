@@ -1382,9 +1382,19 @@ td:nth-child(9) {
   color: var(--brand-magenta-dark);
 }
 
-.invite-panel {
-  max-width: 640px;
+.account-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
   margin-bottom: 16px;
+}
+
+.invite-panel {
+  width: 100%;
+  max-width: 640px;
+  min-width: 0;
+  margin-bottom: 0;
   padding: 14px 18px;
   border: 1px solid var(--brand-border);
   border-radius: 20px;
@@ -1423,6 +1433,7 @@ td:nth-child(9) {
 }
 
 .account-password-panel {
+  width: 100%;
   max-width: 620px;
 }
 
@@ -1690,6 +1701,10 @@ td:nth-child(9) {
   .user-controls {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .account-panels {
+    grid-template-columns: 1fr;
   }
 
   .invite-form-row {

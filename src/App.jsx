@@ -832,8 +832,10 @@ function Dashboard({ user }) {
         </div>
       </header>
 
-      <InvitationPanel user={user} />
-      <PasswordLinkPanel user={user} />
+      <div className="account-panels">
+        <InvitationPanel user={user} />
+        <PasswordLinkPanel user={user} />
+      </div>
 
       <form className="report-controls" onSubmit={applyDateRange}>
         <MonthPicker id="from-month" label="From" value={fromMonth} max={toMonth} onChange={setFromMonth} />
