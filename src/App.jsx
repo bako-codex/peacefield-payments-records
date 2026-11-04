@@ -15,6 +15,8 @@ import {
   updateProfile,
 } from "@firebase/auth";
 import { auth, isFirebaseConfigured } from "./firebase";
+import { BsPersonFillAdd } from "react-icons/bs";
+import { TbPasswordUser } from "react-icons/tb";
 
 const columns = [
   ["timestamp", "Payment date"],
@@ -596,7 +598,7 @@ function InvitationPanel({ user }) {
 
   return (
     <details className="invite-panel">
-      <summary>Invite staff</summary>
+      <summary><BsPersonFillAdd aria-hidden="true" />Invite staff</summary>
       <form onSubmit={createInvite}>
         <label htmlFor="invite-email">Staff email</label>
         <div className="invite-form-row">
@@ -650,7 +652,7 @@ function PasswordLinkPanel({ user }) {
 
   return (
     <details className="invite-panel account-password-panel">
-      <summary>{linked ? "Email and password sign-in enabled" : "Add email and password sign-in"}</summary>
+      <summary><TbPasswordUser aria-hidden="true" />{linked ? "Email and password sign-in enabled" : "Add email and password sign-in"}</summary>
       {linked ? (
         <p className="auth-message success-message">You can now sign in with {user.email} and the password you set, or continue with Google.</p>
       ) : (
