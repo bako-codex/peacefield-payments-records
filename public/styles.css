@@ -1182,6 +1182,12 @@ td:nth-child(9) {
   outline: 3px solid rgba(230, 0, 93, 0.1);
 }
 
+.auth-form input[readonly] {
+  background: #f9f6f7;
+  color: var(--brand-muted);
+  cursor: default;
+}
+
 .primary-button {
   min-height: 44px;
   padding: 0 17px;

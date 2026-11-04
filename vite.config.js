@@ -7,6 +7,7 @@ const apiHandlers = {
   "/api/auth/register": localRequire("./api/auth/register.js"),
   "/api/auth/activate": localRequire("./api/auth/activate.js"),
   "/api/auth/invitations": localRequire("./api/auth/invitations.js"),
+  "/api/auth/invitation-details": localRequire("./api/auth/invitation-details.js"),
 };
 
 module.exports = defineConfig(({ mode }) => {

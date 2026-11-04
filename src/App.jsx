@@ -162,10 +162,61 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState(new URLSearchParams(location.search).get("invite") || "");
+  const [invitedEmail, setInvitedEmail] = useState("");
+  const [inviteLookupStatus, setInviteLookupStatus] = useState(inviteCode ? "loading" : "");
+  const [inviteLookupError, setInviteLookupError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
+
+  useEffect(() => {
+    if (!inviteCode) {
+      setInvitedEmail("");
+      setEmail("");
+      setInviteLookupStatus("");
+      setInviteLookupError("");
+      return undefined;
+    }
+
+    let active = true;
+    setInvitedEmail("");
+    setEmail("");
+    setInviteLookupStatus("loading");
+    setInviteLookupError("");
+    fetch("/api/auth/invitation-details", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ invitationCode: inviteCode.trim() }),
+    })
+      .then(async (response) => {
+        let result;
+        try {
+          result = await response.json();
+        } catch {
+          throw new Error("The server returned an invalid response while checking the invitation.");
+        }
+        if (!response.ok) {
+          throw new Error(getErrorMessage(result.error, "Could not verify this invitation."));
+        }
+        if (typeof result.email !== "string" || !result.email) {
+          throw new Error("This invitation does not include a valid email address.");
+        }
+        if (active) {
+          setInvitedEmail(result.email);
+          setEmail(result.email);
+          setInviteLookupStatus("ready");
+        }
+      })
+      .catch((lookupError) => {
+        if (active) {
+          setInviteLookupError(lookupError.message || "Could not verify this invitation.");
+          setInviteLookupStatus("error");
+        }
+      });
+
+    return () => { active = false; };
+  }, [inviteCode]);
 
   async function submit(event) {
     event.preventDefault();
@@ -306,6 +357,8 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
             <p>{verificationUser ? "Check your inbox and spam folder for a Firebase verification link. If you don’t see it, you can resend it below." : mode === "login" ? "Sign in with your school account to continue." : "Use the invitation sent by your administrator."}</p>
           </div>
           {error && <div className="auth-message error-message" role="alert">{error}</div>}
+          {mode === "signup" && inviteCode && inviteLookupStatus === "loading" && <div className="auth-message" role="status">Checking your invitation…</div>}
+          {mode === "signup" && inviteLookupError && <div className="auth-message error-message" role="alert">{inviteLookupError}</div>}
           {message && <div className="auth-message success-message" role="status">{message}</div>}
           {verificationUser ? (
             <div className="verification-actions">
@@ -330,16 +383,16 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
                   <input id="invite-code" autoComplete="off" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Required unless you are a configured administrator" />
                 </>}
                 <label htmlFor="auth-email">Work email</label>
-                <input id="auth-email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
+                <input id="auth-email" type="email" autoComplete="email" required readOnly={mode === "signup" && Boolean(inviteCode && invitedEmail)} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
                 <label htmlFor="auth-password">Password</label>
                 <input id="auth-password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"} />
                 {mode === "login" && <button className="forgot-link" type="button" onClick={resetPassword}>Forgot password?</button>}
-                <button className="primary-button full-width" type="submit" disabled={busy}>
+                <button className="primary-button full-width" type="submit" disabled={busy || (mode === "signup" && Boolean(inviteCode) && inviteLookupStatus !== "ready")}>
                   {busy ? "Please wait…" : mode === "login" ? "Sign in securely" : "Create account"}
                 </button>
               </form>
               <div className="auth-divider"><span>or</span></div>
-              <button className="google-button" type="button" disabled={busy} onClick={continueWithGoogle}>
+              <button className="google-button" type="button" disabled={busy || (mode === "signup" && Boolean(inviteCode) && inviteLookupStatus !== "ready")} onClick={continueWithGoogle}>
                 <svg aria-hidden="true" viewBox="0 0 48 48" className="google-icon">
                   <path fill="#4285F4" d="M47.6 24.5c0-1.6-.1-3.1-.4-4.6H24v9h13.2c-.6 2.9-2.3 5.3-4.8 7l7.8 6c4.6-4.2 7.4-10.3 7.4-17.4Z" />
                   <path fill="#34A853" d="M24 48c6.5 0 12-2.1 16-5.8l-7.8-6c-2.1 1.4-4.8 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48Z" />
@@ -848,6 +901,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
   const authFlowInProgress = useRef(false);
+  const hasInvitation = new URLSearchParams(window.location.search).has("invite");
 
   async function activateUser(firebaseUser) {
     await apiRequest("/api/auth/activate", firebaseUser, { method: "POST", body: JSON.stringify({}) });
@@ -860,6 +914,12 @@ export default function App() {
     if (!auth) return undefined;
     return onAuthStateChanged(auth, async (firebaseUser) => {
       if (authFlowInProgress.current) return;
+      if (hasInvitation) {
+        setUser(null);
+        setVerificationUser(null);
+        setAuthStatus("signed-out");
+        return;
+      }
       if (!firebaseUser) {
         setUser(null);
         setVerificationUser(null);
@@ -880,7 +940,7 @@ export default function App() {
         setAuthStatus(error.status === 401 || error.status === 403 ? "access-denied" : "server-error");
       }
     });
-  }, []);
+  }, [hasInvitation]);
 
   if (!isFirebaseConfigured) {
     return <SetupPage />;
