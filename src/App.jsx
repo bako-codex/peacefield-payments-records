@@ -834,6 +834,7 @@ function Dashboard({ user, onSignOut }) {
         </div>
         <div className="user-controls">
           <span className="user-email">{user.email}</span>
+          <a className="make-payment-button" href="https://peacefieldpayments.com.ng" target="_blank" rel="noopener noreferrer">Make payment</a>
           <button className="signout-button" type="button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
         </div>
       </header>
