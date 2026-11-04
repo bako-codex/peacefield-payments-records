@@ -17,6 +17,7 @@ import {
 import { auth, isFirebaseConfigured } from "./firebase";
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
+import { IoMdCheckmarkCircleOutline } from "react-icons/io";
 
 const columns = [
   ["timestamp", "Payment date"],
@@ -158,7 +159,7 @@ function Brand({ compact = false }) {
   );
 }
 
-function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
+function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated }) {
   const [mode, setMode] = useState(new URLSearchParams(location.search).has("invite") ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -236,6 +237,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
             method: "POST",
             body: JSON.stringify({ displayName: name.trim(), invitationCode: inviteCode.trim() }),
           });
+          onAccountCreated();
         } catch (registrationError) {
           try {
             await deleteUser(credential.user);
@@ -285,6 +287,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished }) {
           method: "POST",
           body: JSON.stringify({ displayName, invitationCode: inviteCode.trim() }),
         });
+        onAccountCreated();
         await onAuthenticated(credential.user);
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
@@ -904,8 +907,15 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState(isFirebaseConfigured ? "loading" : "not-configured");
   const [authError, setAuthError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
+  const [accountCreated, setAccountCreated] = useState(false);
   const authFlowInProgress = useRef(false);
   const hasInvitation = new URLSearchParams(window.location.search).has("invite");
+
+  useEffect(() => {
+    if (!accountCreated) return undefined;
+    const timeout = window.setTimeout(() => setAccountCreated(false), 3600);
+    return () => window.clearTimeout(timeout);
+  }, [accountCreated]);
 
   async function activateUser(firebaseUser) {
     await apiRequest("/api/auth/activate", firebaseUser, { method: "POST", body: JSON.stringify({}) });
@@ -953,7 +963,12 @@ export default function App() {
     return <div className="auth-loading"><span className="spinner" />Checking your secure session…</div>;
   }
   if (authStatus === "active" && user) {
-    return <Dashboard user={user} />;
+    return (
+      <>
+        <Dashboard user={user} />
+        {accountCreated && <AccountCreatedToast />}
+      </>
+    );
   }
   if (authStatus === "verification-required" && verificationUser) {
     return <VerificationPage user={verificationUser} onSignOut={() => signOut(auth)} onVerified={activateUser} />;
@@ -964,11 +979,26 @@ export default function App() {
   if (authStatus === "server-error") {
     return <AccessDeniedPage error={authError} serverError onSignOut={() => signOut(auth)} />;
   }
-  return <AuthPage
-    onAuthenticated={activateUser}
-    onAuthFlowStarted={() => { authFlowInProgress.current = true; }}
-    onAuthFlowFinished={() => { authFlowInProgress.current = false; }}
-  />;
+  return (
+    <>
+      <AuthPage
+        onAuthenticated={activateUser}
+        onAuthFlowStarted={() => { authFlowInProgress.current = true; }}
+        onAuthFlowFinished={() => { authFlowInProgress.current = false; }}
+        onAccountCreated={() => setAccountCreated(true)}
+      />
+      {accountCreated && <AccountCreatedToast />}
+    </>
+  );
+}
+
+function AccountCreatedToast() {
+  return (
+    <div className="account-created-toast" role="status">
+      <IoMdCheckmarkCircleOutline aria-hidden="true" />
+      <span>Account created successfully. Check your email to verify your account.</span>
+    </div>
+  );
 }
 
 function VerificationPage({ user, onSignOut, onVerified }) {

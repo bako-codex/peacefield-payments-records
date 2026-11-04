@@ -1314,6 +1314,56 @@ td:nth-child(9) {
   color: #286b43;
 }
 
+.account-created-toast {
+  position: fixed;
+  z-index: 1000;
+  top: 16px;
+  left: 50%;
+  display: flex;
+  width: min(440px, calc(100vw - 32px));
+  align-items: center;
+  gap: 11px;
+  padding: 14px 18px;
+  transform: translate(-50%, -160%);
+  border: 1px solid #b8dfc7;
+  border-radius: 14px;
+  background: #f4fbf6;
+  box-shadow: 0 12px 30px rgba(28, 83, 49, 0.16);
+  color: #286b43;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.4;
+  pointer-events: none;
+  animation: account-created-toast 3.6s ease both;
+}
+
+.account-created-toast svg {
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  font-size: 25px;
+}
+
+@keyframes account-created-toast {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -160%);
+  }
+  10%,
+  82% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-created-toast {
+    animation: none;
+    transform: translate(-50%, 0);
+  }
+}
+
 .auth-privacy {
   margin: 28px 0 0;
   text-align: center;
