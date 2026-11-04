@@ -17,7 +17,8 @@ import {
 import { auth, isFirebaseConfigured } from "./firebase";
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
-import { IoMdCheckmarkCircleOutline } from "react-icons/io";
+import { FaSignOutAlt } from "react-icons/fa";
+import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 
 const columns = [
   ["timestamp", "Payment date"],
@@ -159,7 +160,7 @@ function Brand({ compact = false }) {
   );
 }
 
-function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated }) {
+function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated, onSignedIn }) {
   const [mode, setMode] = useState(new URLSearchParams(location.search).has("invite") ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -264,6 +265,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           setMessage("Please verify your email address to continue.");
         } else {
           await onAuthenticated(credential.user);
+          onSignedIn();
         }
       }
     } catch (authError) {
@@ -287,8 +289,9 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           method: "POST",
           body: JSON.stringify({ displayName, invitationCode: inviteCode.trim() }),
         });
-        onAccountCreated();
+        if (mode === "signup") onAccountCreated();
         await onAuthenticated(credential.user);
+        if (mode !== "signup") onSignedIn();
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
         try {
@@ -675,7 +678,7 @@ function PasswordLinkPanel({ user }) {
   );
 }
 
-function Dashboard({ user }) {
+function Dashboard({ user, onSignOut }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading payment records.");
@@ -831,7 +834,7 @@ function Dashboard({ user }) {
         </div>
         <div className="user-controls">
           <span className="user-email">{user.email}</span>
-          <button className="signout-button" type="button" onClick={() => signOut(auth)}>Sign out</button>
+          <button className="signout-button" type="button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
         </div>
       </header>
 
@@ -907,15 +910,30 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState(isFirebaseConfigured ? "loading" : "not-configured");
   const [authError, setAuthError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
-  const [accountCreated, setAccountCreated] = useState(false);
+  const [notification, setNotification] = useState(null);
   const authFlowInProgress = useRef(false);
+  const notificationId = useRef(0);
   const hasInvitation = new URLSearchParams(window.location.search).has("invite");
 
+  function showNotification(message, type = "success") {
+    notificationId.current += 1;
+    setNotification({ id: notificationId.current, message, type });
+  }
+
   useEffect(() => {
-    if (!accountCreated) return undefined;
-    const timeout = window.setTimeout(() => setAccountCreated(false), 3600);
+    if (!notification) return undefined;
+    const timeout = window.setTimeout(() => setNotification(null), 3600);
     return () => window.clearTimeout(timeout);
-  }, [accountCreated]);
+  }, [notification]);
+
+  async function signOutUser() {
+    try {
+      await signOut(auth);
+      showNotification("Signed out successfully.");
+    } catch (error) {
+      showNotification(error.message || "Could not sign out. Please try again.", "error");
+    }
+  }
 
   async function activateUser(firebaseUser) {
     await apiRequest("/api/auth/activate", firebaseUser, { method: "POST", body: JSON.stringify({}) });
@@ -965,19 +983,19 @@ export default function App() {
   if (authStatus === "active" && user) {
     return (
       <>
-        <Dashboard user={user} />
-        {accountCreated && <AccountCreatedToast />}
+        <Dashboard user={user} onSignOut={signOutUser} />
+        {notification && <AuthToast key={notification.id} message={notification.message} type={notification.type} />}
       </>
     );
   }
   if (authStatus === "verification-required" && verificationUser) {
-    return <VerificationPage user={verificationUser} onSignOut={() => signOut(auth)} onVerified={activateUser} />;
+    return <VerificationPage user={verificationUser} onSignOut={signOutUser} onVerified={activateUser} />;
   }
   if (authStatus === "access-denied") {
-    return <AccessDeniedPage error={authError} onSignOut={() => signOut(auth)} />;
+    return <AccessDeniedPage error={authError} onSignOut={signOutUser} />;
   }
   if (authStatus === "server-error") {
-    return <AccessDeniedPage error={authError} serverError onSignOut={() => signOut(auth)} />;
+    return <AccessDeniedPage error={authError} serverError onSignOut={signOutUser} />;
   }
   return (
     <>
@@ -985,18 +1003,19 @@ export default function App() {
         onAuthenticated={activateUser}
         onAuthFlowStarted={() => { authFlowInProgress.current = true; }}
         onAuthFlowFinished={() => { authFlowInProgress.current = false; }}
-        onAccountCreated={() => setAccountCreated(true)}
+        onAccountCreated={() => showNotification("Account created successfully. Check your email to verify your account.")}
+        onSignedIn={() => showNotification("Signed in successfully.")}
       />
-      {accountCreated && <AccountCreatedToast />}
+      {notification && <AuthToast key={notification.id} message={notification.message} type={notification.type} />}
     </>
   );
 }
 
-function AccountCreatedToast() {
+function AuthToast({ message, type }) {
   return (
-    <div className="account-created-toast" role="status">
-      <IoMdCheckmarkCircleOutline aria-hidden="true" />
-      <span>Account created successfully. Check your email to verify your account.</span>
+    <div className={`auth-toast${type === "error" ? " is-error" : ""}`} role={type === "error" ? "alert" : "status"}>
+      <IoCheckmarkDoneCircleOutline aria-hidden="true" />
+      <span>{message}</span>
     </div>
   );
 }
@@ -1040,14 +1059,14 @@ function VerificationPage({ user, onSignOut, onVerified }) {
     {error && <div className="auth-message error-message" role="alert">{error}</div>}
     <button className="primary-button full-width" disabled={busy} onClick={checkVerification}>{busy ? "Checking…" : "I’ve verified — continue"}</button>
     <button className="primary-button full-width" disabled={busy} onClick={resend}>{busy ? "Sending…" : "Resend verification email"}</button>
-    <button className="text-button" onClick={onSignOut}>Return to sign in</button>
+    <button className="text-button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Return to sign in</button>
   </div></section></main>;
 }
 
 function AccessDeniedPage({ error, onSignOut, serverError = false }) {
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
     <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>We couldn’t verify access</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
-    <button className="primary-button full-width" onClick={onSignOut}>Sign out</button>
+    <button className="primary-button full-width" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
   </div></section></main>;
 }
 

@@ -1314,7 +1314,7 @@ td:nth-child(9) {
   color: #286b43;
 }
 
-.account-created-toast {
+.auth-toast {
   position: fixed;
   z-index: 1000;
   top: 16px;
@@ -1334,17 +1334,23 @@ td:nth-child(9) {
   font-weight: 650;
   line-height: 1.4;
   pointer-events: none;
-  animation: account-created-toast 3.6s ease both;
+  animation: auth-toast 3.6s ease both;
 }
 
-.account-created-toast svg {
+.auth-toast svg {
   width: 25px;
   height: 25px;
   flex: 0 0 auto;
   font-size: 25px;
 }
 
-@keyframes account-created-toast {
+.auth-toast.is-error {
+  border-color: #efcaca;
+  background: #fff7f7;
+  color: #963f3f;
+}
+
+@keyframes auth-toast {
   0%,
   100% {
     opacity: 0;
@@ -1358,7 +1364,7 @@ td:nth-child(9) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .account-created-toast {
+  .auth-toast {
     animation: none;
     transform: translate(-50%, 0);
   }
@@ -1417,7 +1423,11 @@ td:nth-child(9) {
 }
 
 .signout-button {
+  display: inline-flex;
   min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0 14px;
   border: 1px solid var(--brand-border);
   border-radius: 999px;
@@ -1425,6 +1435,20 @@ td:nth-child(9) {
   color: var(--brand-ink);
   font-weight: 650;
   cursor: pointer;
+}
+
+.signout-button svg,
+.auth-card > .primary-button svg,
+.verification-actions .text-button svg {
+  flex: 0 0 auto;
+}
+
+.auth-card > .primary-button,
+.verification-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 
 .signout-button:hover {
