@@ -90,6 +90,18 @@ function formatDate(value) {
   return `${weekday}. ${day}${ordinal} ${monthYear}`;
 }
 
+function formatAccessCountdown(expiresAt, now) {
+  const remaining = new Date(expiresAt).getTime() - now;
+  if (!Number.isFinite(remaining) || remaining <= 0) return "Access expired";
+  const totalMinutes = Math.ceil(remaining / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days) return `Access expires: ${days}d ${hours}h`;
+  if (hours) return `Access expires: ${hours}h ${minutes}m`;
+  return `Access expires: ${minutes}m`;
+}
+
 function isOutstanding(record) {
   return String(record.paymentType).toLocaleUpperCase() === "OUTSTANDING";
 }
@@ -160,7 +172,7 @@ function Brand({ compact = false }) {
   );
 }
 
-function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated, onSignedIn }) {
+function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated, onSignedIn, onInvitationAccepted }) {
   const [mode, setMode] = useState(new URLSearchParams(location.search).has("invite") ? "signup" : "login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -264,8 +276,18 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           setVerificationUser(credential.user);
           setMessage("Please verify your email address to continue.");
         } else {
+          if (inviteCode.trim()) {
+            await apiRequest("/api/auth/register", credential.user, {
+              method: "POST",
+              body: JSON.stringify({
+                displayName: credential.user.displayName || "",
+                invitationCode: inviteCode.trim(),
+              }),
+            });
+          }
           await onAuthenticated(credential.user);
-          onSignedIn();
+          if (inviteCode.trim()) onInvitationAccepted();
+          else onSignedIn();
         }
       }
     } catch (authError) {
@@ -289,9 +311,10 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           method: "POST",
           body: JSON.stringify({ displayName, invitationCode: inviteCode.trim() }),
         });
-        if (mode === "signup") onAccountCreated();
+        if (mode === "signup" && !inviteCode.trim()) onAccountCreated();
         await onAuthenticated(credential.user);
-        if (mode !== "signup") onSignedIn();
+        if (inviteCode.trim()) onInvitationAccepted();
+        else if (mode !== "signup") onSignedIn();
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
         try {
@@ -614,7 +637,7 @@ function InvitationPanel({ user }) {
       </form>
       {error && <p className="invite-error" role="alert">{error}</p>}
       {invite && <div className="invite-result">
-        <span>Invitation email sent to {inviteRecipient}. It expires in 7 days. You can also share this link:</span>
+        <span>Invitation email sent to {inviteRecipient}. It expires in 30 minutes. You can also share this link:</span>
         <div className="invite-link-row">
           <a href={invite}>{invite}</a>
           <button type="button" className="clear-filter" onClick={() => navigator.clipboard.writeText(invite)}>Copy invite link</button>
@@ -678,7 +701,7 @@ function PasswordLinkPanel({ user }) {
   );
 }
 
-function Dashboard({ user, onSignOut }) {
+function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading payment records.");
@@ -694,7 +717,51 @@ function Dashboard({ user, onSignOut }) {
   const [category, setCategory] = useState("");
   const [appliedFilters, setAppliedFilters] = useState({ class: "", studentName: "", itemSummary: "", category: "" });
   const [dateError, setDateError] = useState("");
-  const [inviteError, setInviteError] = useState("");
+  const [invitationError, setInvitationError] = useState("");
+  const [invitationExpiresAt, setInvitationExpiresAt] = useState(null);
+  const [clock, setClock] = useState(Date.now());
+  const expiryHandled = useRef(false);
+  const onAccessExpiredRef = useRef(onAccessExpired);
+  onAccessExpiredRef.current = onAccessExpired;
+
+  useEffect(() => {
+    let active = true;
+    apiRequest("/api/auth/my-invitation", user)
+      .then((result) => {
+        if (active && typeof result.expiresAt === "string") {
+          setInvitationExpiresAt(result.expiresAt);
+        }
+      })
+      .catch((lookupError) => {
+        if (active) setInvitationError(lookupError.message);
+      });
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!invitationExpiresAt || expiryHandled.current) return undefined;
+    const remaining = new Date(invitationExpiresAt).getTime() - Date.now();
+    function checkExpiry() {
+      if (Date.now() < new Date(invitationExpiresAt).getTime() || expiryHandled.current) return;
+      expiryHandled.current = true;
+      onAccessExpiredRef.current();
+    }
+    const timeout = window.setTimeout(() => {
+      checkExpiry();
+    }, Math.max(remaining, 0));
+    window.addEventListener("focus", checkExpiry);
+    document.addEventListener("visibilitychange", checkExpiry);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("focus", checkExpiry);
+      document.removeEventListener("visibilitychange", checkExpiry);
+    };
+  }, [invitationExpiresAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -834,6 +901,8 @@ function Dashboard({ user, onSignOut }) {
         </div>
         <div className="user-controls">
           <span className="user-email">{user.email}</span>
+          {invitationExpiresAt && <span className="invitation-countdown" title="Account access ends when this invitation expires. Ask an administrator for a new invitation to restore access.">{formatAccessCountdown(invitationExpiresAt, clock)}</span>}
+          {invitationError && <span className="invitation-countdown-error" role="alert">{invitationError}</span>}
           <a className="make-payment-button" href="https://peacefieldpayments.com.ng" target="_blank" rel="noopener noreferrer">Make payment</a>
           <button className="signout-button" type="button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
         </div>
@@ -984,7 +1053,14 @@ export default function App() {
   if (authStatus === "active" && user) {
     return (
       <>
-        <Dashboard user={user} onSignOut={signOutUser} />
+        <Dashboard
+          user={user}
+          onSignOut={signOutUser}
+          onAccessExpired={() => {
+            setAuthError("Access to this account has expired. Ask an administrator for a new invitation, then sign in through its link.");
+            setAuthStatus("access-denied");
+          }}
+        />
         {notification && <AuthToast key={notification.id} message={notification.message} type={notification.type} />}
       </>
     );
@@ -1006,6 +1082,7 @@ export default function App() {
         onAuthFlowFinished={() => { authFlowInProgress.current = false; }}
         onAccountCreated={() => showNotification("Account created successfully. Check your email to verify your account.")}
         onSignedIn={() => showNotification("Signed in successfully.")}
+        onInvitationAccepted={() => showNotification("Invitation accepted. Account access has been renewed.")}
       />
       {notification && <AuthToast key={notification.id} message={notification.message} type={notification.type} />}
     </>
@@ -1065,8 +1142,9 @@ function VerificationPage({ user, onSignOut, onVerified }) {
 }
 
 function AccessDeniedPage({ error, onSignOut, serverError = false }) {
+  const invitationExpired = /access to this account has expired/i.test(error);
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>We couldn’t verify access</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>{invitationExpired ? "Your invitation has expired" : "We couldn’t verify access"}</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : invitationExpired ? "Ask an administrator to send you a new invitation. Open its link and sign in with your existing account to restore access." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
     <button className="primary-button full-width" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
   </div></section></main>;
 }

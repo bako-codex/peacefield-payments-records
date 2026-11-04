@@ -1,4 +1,9 @@
-const { getServices, handleApiError, authenticateRequest, sendJson } = require("../../lib/server/firebaseAdmin");
+const {
+  getServices,
+  handleApiError,
+  authenticateRequest,
+  sendJson,
+} = require("../../lib/server/firebaseAdmin");
 const { hashInvitation, normalizeEmail } = require("../../lib/server/invitation");
 const { Timestamp } = require("firebase-admin/firestore");
 
@@ -23,16 +28,16 @@ module.exports = async function register(request, response) {
     const { db } = getServices();
     const userRef = db.collection("users").doc(decoded.uid);
     const existingProfile = await userRef.get();
-    if (existingProfile.exists) {
-      if (normalizeEmail(existingProfile.get("email")) !== email) {
-        sendJson(response, 403, { error: "The signed-in email does not match this account profile." });
-        return;
-      }
-      sendJson(response, 200, { ok: true });
+    if (existingProfile.exists && normalizeEmail(existingProfile.get("email")) !== email) {
+      sendJson(response, 403, { error: "The signed-in email does not match this account profile." });
       return;
     }
 
     if (isConfiguredAdmin) {
+      if (existingProfile.exists) {
+        sendJson(response, 200, { ok: true });
+        return;
+      }
       await db.runTransaction(async (transaction) => {
         const profile = await transaction.get(userRef);
         if (profile.exists) {
@@ -61,9 +66,6 @@ module.exports = async function register(request, response) {
           transaction.get(invitationRef),
           transaction.get(userRef),
         ]);
-        if (profile.exists && profile.get("email") === email) {
-          return;
-        }
         const expiry = invitation.get("expiresAt");
         if (
           !invitation.exists ||
@@ -81,12 +83,16 @@ module.exports = async function register(request, response) {
           usedAt: Timestamp.now(),
           usedBy: decoded.uid,
         });
-        transaction.set(userRef, {
+        const accountData = {
           email,
-          displayName: String(displayName ?? "").trim().slice(0, 100),
-          status: "pending_verification",
-          createdAt: Timestamp.now(),
-        });
+          accessExpiresAt: expiry,
+        };
+        if (!profile.exists) {
+          accountData.displayName = String(displayName ?? "").trim().slice(0, 100);
+          accountData.status = "pending_verification";
+          accountData.createdAt = Timestamp.now();
+        }
+        transaction.set(userRef, accountData, { merge: true });
       });
     }
 

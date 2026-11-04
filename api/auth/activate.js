@@ -1,4 +1,10 @@
-const { authenticateRequest, getServices, handleApiError, sendJson } = require("../../lib/server/firebaseAdmin");
+const {
+  authenticateRequest,
+  getServices,
+  handleApiError,
+  requireUnexpiredAccess,
+  sendJson,
+} = require("../../lib/server/firebaseAdmin");
 const { normalizeEmail } = require("../../lib/server/invitation");
 
 module.exports = async function activate(request, response) {
@@ -17,6 +23,7 @@ module.exports = async function activate(request, response) {
       sendJson(response, 403, { error: "This account was not created with a valid invitation." });
       return;
     }
+    await requireUnexpiredAccess(decoded, profile, userRef);
     if (profile.get("status") !== "active") {
       await userRef.update({
         status: "active",

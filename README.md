@@ -67,12 +67,17 @@ Firebase Admin credentials; the browser never has direct payment access.
 
 An administrator signs up with an email listed in `ADMIN_EMAILS`, verifies it,
 and signs in. From **Invite staff**, the administrator creates a single-use,
-seven-day invitation and sends it to the staff member's exact email address
+30-minute invitation and sends it to the staff member's exact email address
 through Brevo. Configure and verify the sender address in Brevo before sending. The staff
 member opens that link and can create an account with email/password or Google.
 Google accounts use their Google-verified email and still require an invitation,
 unless the email is listed in `ADMIN_EMAILS`. No public, unrestricted account
 can read payment data.
+
+Invited staff access expires with the 30-minute invitation. After it expires,
+the user must ask an administrator for a new invitation and open its link. An
+existing staff account can sign in through that fresh link to renew access;
+configured administrators are not subject to invitation expiry.
 
 Firebase Authentication still sends verification and password-reset emails.
 Set the sender display name in Firebase Authentication → **Templates**. Invite

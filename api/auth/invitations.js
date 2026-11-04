@@ -63,7 +63,7 @@ async function sendInvitationEmail({ email, signupUrl, appUrl }) {
       textContent: [
         "You have been invited to the Peacefield Records staff portal.",
         `Create your account using this link: ${signupUrl}`,
-        "This invitation expires in 7 days and can only be used with the email address this message was sent to.",
+        "This invitation expires in 30 minutes and can only be used with the email address this message was sent to.",
         `If you have questions, visit ${appUrl}.`,
       ].join("\n\n"),
       htmlContent: [
@@ -73,7 +73,7 @@ async function sendInvitationEmail({ email, signupUrl, appUrl }) {
         "<h1 style=\"margin:0 0 16px;font-size:24px\">You're invited to Peacefield Records</h1>",
         "<p style=\"line-height:1.6\">You have been invited to the secure staff portal. Use the button below to create your account.</p>",
         `<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:13px 20px;border-radius:8px;background:#e6005d;color:#fff;text-decoration:none;font-weight:700">Accept invitation</a></p>`,
-        "<p style=\"line-height:1.6\">This single-use invitation expires in 7 days and is valid only for the email address this message was sent to.</p>",
+        "<p style=\"line-height:1.6\">This single-use invitation expires in 30 minutes and is valid only for the email address this message was sent to.</p>",
         `<p style="font-size:13px;line-height:1.6;color:#6b6470\">If the button doesn't work, copy this link into your browser:<br><a href="${safeUrl}" style="color:#c90050">${safeUrl}</a></p>`,
         `<p style="margin-top:24px;font-size:13px;color:#6b6470\">Peacefield Records · <a href="${safeAppUrl}" style="color:#c90050">${safeAppUrl}</a></p>`,
         "</div></body></html>",
@@ -136,7 +136,7 @@ module.exports = async function createInvitation(request, response) {
     const appUrl = getAppUrl();
     const code = createInvitationCode();
     const signupUrl = `${appUrl}/?invite=${encodeURIComponent(code)}`;
-    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiry = new Date(Date.now() + 30 * 60 * 1000);
     const invitationRef = db.collection("authInvitations").doc(hashInvitation(code));
     await invitationRef.create({
       email,
