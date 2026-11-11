@@ -7,8 +7,11 @@ const apiHandlers = {
   "/api/auth/register": localRequire("./api/auth/register.js"),
   "/api/auth/activate": localRequire("./api/auth/activate.js"),
   "/api/auth/invitations": localRequire("./api/auth/invitations.js"),
+  "/api/auth/otp": localRequire("./api/auth/otp.js"),
+  "/api/auth/verify-otp": localRequire("./api/auth/verify-otp.js"),
   "/api/auth/invitation-details": localRequire("./api/auth/invitation-details.js"),
   "/api/auth/my-invitation": localRequire("./api/auth/my-invitation.js"),
+  "/api/records/fields": localRequire("./api/records/fields.js"),
 };
 
 module.exports = defineConfig(({ mode }) => {

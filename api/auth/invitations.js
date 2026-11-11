@@ -1,5 +1,13 @@
 const { authenticateRequest, getServices, handleApiError, sendJson } = require("../../lib/server/firebaseAdmin");
-const { createInvitationCode, hashInvitation, normalizeEmail } = require("../../lib/server/invitation");
+const {
+  createInvitationCode,
+  createOtp,
+  hashInvitation,
+  hashOtp,
+  INVITATION_DURATION_MS,
+  normalizeEmail,
+  OTP_DURATION_MS,
+} = require("../../lib/server/invitation");
 
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -37,7 +45,7 @@ function getAppUrl() {
   return parsedUrl.origin;
 }
 
-async function sendInvitationEmail({ email, signupUrl, appUrl }) {
+async function sendInvitationEmail({ email, otp, appUrl }) {
   const apiKey = process.env.BREVO_API_KEY;
   const senderEmail = process.env.EMAIL_FROM;
   const senderName = process.env.EMAIL_FROM_NAME || "Peacefield Records";
@@ -47,7 +55,6 @@ async function sendInvitationEmail({ email, signupUrl, appUrl }) {
     throw error;
   }
 
-  const safeUrl = escapeHtml(signupUrl);
   const safeAppUrl = escapeHtml(appUrl);
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -62,19 +69,20 @@ async function sendInvitationEmail({ email, signupUrl, appUrl }) {
       subject: "You're invited to Peacefield Records",
       textContent: [
         "You have been invited to the Peacefield Records staff portal.",
-        `Create your account using this link: ${signupUrl}`,
-        "This invitation expires in 30 minutes and can only be used with the email address this message was sent to.",
-        `If you have questions, visit ${appUrl}.`,
+        `Enter this one-time code on the Peacefield Records website when you create your account: ${otp}`,
+        "This code expires in 30 minutes and can only be used with the email address this message was sent to. The invitation expires in 7 days.",
+        `Visit ${appUrl} and choose Create account.`,
       ].join("\n\n"),
       htmlContent: [
         "<!doctype html><html><body style=\"margin:0;background:#f7f4f6;font-family:Arial,sans-serif;color:#25212a\">",
         "<div style=\"max-width:560px;margin:32px auto;padding:32px;background:#fff;border:1px solid #eee3e9;border-radius:16px\">",
         "<p style=\"margin:0 0 8px;color:#e6005d;font-weight:700;letter-spacing:1px\">PEACEFIELD PRIVATE SCHOOLS</p>",
         "<h1 style=\"margin:0 0 16px;font-size:24px\">You're invited to Peacefield Records</h1>",
-        "<p style=\"line-height:1.6\">You have been invited to the secure staff portal. Use the button below to create your account.</p>",
-        `<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;padding:13px 20px;border-radius:8px;background:#e6005d;color:#fff;text-decoration:none;font-weight:700">Accept invitation</a></p>`,
-        "<p style=\"line-height:1.6\">This single-use invitation expires in 30 minutes and is valid only for the email address this message was sent to.</p>",
-        `<p style="font-size:13px;line-height:1.6;color:#6b6470\">If the button doesn't work, copy this link into your browser:<br><a href="${safeUrl}" style="color:#c90050">${safeUrl}</a></p>`,
+        "<p style=\"line-height:1.6\">You have been invited to the secure staff portal. Enter this one-time code on the website when you create your account:</p>",
+        `<p style="margin:24px 0;padding:16px;background:#fff4f8;border-radius:8px;color:#c90050;font-size:30px;font-weight:700;letter-spacing:8px;text-align:center">${otp}</p>`,
+        "<p style=\"line-height:1.6\">This code expires in 30 minutes and is valid only for the email address this message was sent to. Do not share it.</p>",
+        "<p style=\"line-height:1.6\">The invitation expires in 7 days.</p>",
+        `<p style="margin-top:24px;font-size:13px;color:#6b6470\">Visit <a href="${safeAppUrl}" style="color:#c90050">${safeAppUrl}</a> and choose Create account.</p>`,
         `<p style="margin-top:24px;font-size:13px;color:#6b6470\">Peacefield Records · <a href="${safeAppUrl}" style="color:#c90050">${safeAppUrl}</a></p>`,
         "</div></body></html>",
       ].join(""),
@@ -135,18 +143,23 @@ module.exports = async function createInvitation(request, response) {
     const { db, Timestamp } = getServices();
     const appUrl = getAppUrl();
     const code = createInvitationCode();
-    const signupUrl = `${appUrl}/?invite=${encodeURIComponent(code)}`;
-    const expiry = new Date(Date.now() + 30 * 60 * 1000);
+    const otp = createOtp();
+    const expiry = new Date(Date.now() + INVITATION_DURATION_MS);
+    const otpExpiry = new Date(Math.min(Date.now() + OTP_DURATION_MS, expiry.getTime()));
     const invitationRef = db.collection("authInvitations").doc(hashInvitation(code));
     await invitationRef.create({
       email,
       createdBy: decoded.uid,
       createdAt: Timestamp.now(),
       expiresAt: Timestamp.fromDate(expiry),
+      otpExpiresAt: Timestamp.fromDate(otpExpiry),
+      otpHash: hashOtp(email, otp),
+      otpAttempts: 0,
+      otpSentAt: Timestamp.now(),
       deliveryStatus: "pending",
     });
     try {
-      await sendInvitationEmail({ email, signupUrl, appUrl });
+      await sendInvitationEmail({ email, otp, appUrl });
       await invitationRef.update({ deliveryStatus: "sent", sentAt: Timestamp.now() });
     } catch (error) {
       await invitationRef.delete();
@@ -156,7 +169,6 @@ module.exports = async function createInvitation(request, response) {
     sendJson(response, 201, {
       email,
       expiresAt: expiry.toISOString(),
-      signupUrl,
       emailSent: true,
     });
   } catch (error) {

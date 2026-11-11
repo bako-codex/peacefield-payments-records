@@ -65,32 +65,37 @@ Firebase Admin credentials; the browser never has direct payment access.
 6. Deploy the project to Vercel. Vercel builds the React app and deploys
    `api/**/*.js` as serverless functions.
 
-An administrator signs up with an email listed in `ADMIN_EMAILS`, verifies it,
-and signs in. From **Invite staff**, the administrator creates a single-use,
-30-minute invitation and sends it to the staff member's exact email address
-through Brevo. Configure and verify the sender address in Brevo before sending. The staff
-member opens that link and can create an account with email/password or Google.
+An administrator signs up with an email listed in `ADMIN_EMAILS`, verifies it
+with the one-time code sent by email, and signs in. From **Invite staff**, the
+administrator creates a single-use, 7-day invitation and sends it to the staff
+member's exact email address through Brevo. The emailed one-time code expires
+after 30 minutes. Configure and verify the sender address in Brevo before
+sending.
+The staff member enters the emailed one-time code on the portal to create an
+account with email/password or Google. Codes are valid only for the email
+address they were sent to.
 Google accounts use their Google-verified email and still require an invitation,
 unless the email is listed in `ADMIN_EMAILS`. No public, unrestricted account
 can read payment data.
 
-Invited staff access expires with the 30-minute invitation. After it expires,
-the user must ask an administrator for a new invitation and open its link. An
-existing staff account can sign in through that fresh link to renew access;
+Invited staff access expires with the 7-day invitation. After it expires,
+the user must ask an administrator for a new invitation and enter its emailed
+code. An existing staff account can sign in with that fresh code to renew access;
 configured administrators are not subject to invitation expiry.
 
-Firebase Authentication still sends verification and password-reset emails.
-Set the sender display name in Firebase Authentication → **Templates**. Invite
-emails use the configured Brevo sender. For better inbox placement, authenticate
-the sending domain in Brevo and publish its recommended SPF/DKIM DNS records;
-inbox placement cannot be guaranteed. Keep the Brevo API key server-side and
-never put it in a `VITE_` variable.
+Email verification codes and invitations are sent through Brevo, so configure
+and verify the Brevo sender address. Firebase Authentication continues to send
+password-reset emails. For better inbox placement, authenticate the sending
+domain in Brevo and publish its recommended SPF/DKIM DNS records; inbox
+placement cannot be guaranteed. Keep the Brevo API key server-side and never
+put it in a `VITE_` variable.
 
 ## Data/report behavior
 
 The report automatically loads payment records in pages of 50. Firestore reads
-may incur normal charges. Date ranges use the `timestamp` field and include
-both selected months. Filters and search operate on the loaded data.
+may incur normal charges. The From and To month filters reload records
+immediately when changed; either boundary can be used on its own, and selected
+months are inclusive. Filters and search operate on the loaded data.
 
 Category fee totals use the supplied Tuition/Lesson/Social rate schedule and
 only count fees listed in an item's summary. Day Care uses the Reception

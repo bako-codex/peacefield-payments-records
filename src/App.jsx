@@ -7,7 +7,6 @@ import {
   linkWithCredential,
   onAuthStateChanged,
   reload,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithPopup,
   signInWithEmailAndPassword,
@@ -177,6 +176,8 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpRequested, setOtpRequested] = useState(false);
   const [inviteCode, setInviteCode] = useState(new URLSearchParams(location.search).get("invite") || "");
   const [invitedEmail, setInvitedEmail] = useState("");
   const [inviteLookupStatus, setInviteLookupStatus] = useState(inviteCode ? "loading" : "");
@@ -234,22 +235,48 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
     return () => { active = false; };
   }, [inviteCode]);
 
+  async function requestOtp() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not send a verification code."));
+      setOtpRequested(true);
+      setMessage(result.message || "Check your email for the six-digit verification code.");
+    } catch (requestError) {
+      setError(requestError.message || "Could not send a verification code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
-    const isSignup = mode === "signup";
-    if (isSignup) onAuthFlowStarted();
+    onAuthFlowStarted();
     setBusy(true);
     setError("");
     setMessage("");
     try {
       if (mode === "signup") {
+        if (!/^\d{6}$/.test(otpCode)) {
+          throw new Error("Enter the six-digit code sent to your email before creating an account.");
+        }
         const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
         try {
           await updateProfile(credential.user, { displayName: name.trim() });
           await apiRequest("/api/auth/register", credential.user, {
             method: "POST",
-            body: JSON.stringify({ displayName: name.trim(), invitationCode: inviteCode.trim() }),
+            body: JSON.stringify({ displayName: name.trim(), otpCode }),
           });
+          await credential.user.reload();
+          await credential.user.getIdToken(true);
+          await onAuthenticated(credential.user);
           onAccountCreated();
         } catch (registrationError) {
           try {
@@ -259,46 +286,42 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           }
           throw registrationError;
         }
-        setVerificationUser(credential.user);
-        try {
-          await sendEmailVerification(credential.user, {
-            url: window.location.origin,
-            handleCodeInApp: false,
-          });
-          setMessage("Your account is ready. Check your email and verify your address before signing in.");
-        } catch (verificationError) {
-          setError(`Your account was created, but Firebase could not send the verification email. Use “Resend verification email” to try again. ${verificationError.message}`);
-        }
       } else {
         const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
         await credential.user.reload();
-        if (!credential.user.emailVerified) {
+        if (!credential.user.emailVerified && !otpCode.trim()) {
           setVerificationUser(credential.user);
-          setMessage("Please verify your email address to continue.");
-        } else {
-          if (inviteCode.trim()) {
-            await apiRequest("/api/auth/register", credential.user, {
-              method: "POST",
-              body: JSON.stringify({
-                displayName: credential.user.displayName || "",
-                invitationCode: inviteCode.trim(),
-              }),
-            });
-          }
-          await onAuthenticated(credential.user);
-          if (inviteCode.trim()) onInvitationAccepted();
-          else onSignedIn();
+          setEmail(credential.user.email || email.trim());
+          return;
         }
+        if (otpCode.trim()) {
+          await apiRequest("/api/auth/register", credential.user, {
+            method: "POST",
+            body: JSON.stringify({
+              displayName: credential.user.displayName || "",
+              otpCode: otpCode.trim(),
+            }),
+          });
+          await credential.user.reload();
+          await credential.user.getIdToken(true);
+        }
+        await onAuthenticated(credential.user);
+        if (otpCode.trim()) onInvitationAccepted();
+        else onSignedIn();
       }
     } catch (authError) {
       setError(authError.message || "Authentication failed. Please try again.");
     } finally {
-      if (isSignup) onAuthFlowFinished();
+      onAuthFlowFinished();
       setBusy(false);
     }
   }
 
   async function continueWithGoogle() {
+    if (mode === "signup" && !/^\d{6}$/.test(otpCode)) {
+      setError("Enter the six-digit code sent to your email before continuing with Google.");
+      return;
+    }
     onAuthFlowStarted();
     setBusy(true);
     setError("");
@@ -307,13 +330,18 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
       const credential = await signInWithPopup(auth, new GoogleAuthProvider());
       const displayName = name.trim() || credential.user.displayName || "";
       try {
-        await apiRequest("/api/auth/register", credential.user, {
-          method: "POST",
-          body: JSON.stringify({ displayName, invitationCode: inviteCode.trim() }),
-        });
-        if (mode === "signup" && !inviteCode.trim()) onAccountCreated();
+        if (mode === "signup" && credential.user.email?.toLocaleLowerCase() !== email.trim().toLocaleLowerCase()) {
+          throw new Error("The Google account email must match the email address that received the verification code.");
+        }
+        if (mode === "signup" || otpCode.trim()) {
+          await apiRequest("/api/auth/register", credential.user, {
+            method: "POST",
+            body: JSON.stringify({ displayName, otpCode: otpCode.trim() }),
+          });
+        }
+        if (mode === "signup") onAccountCreated();
         await onAuthenticated(credential.user);
-        if (inviteCode.trim()) onInvitationAccepted();
+        if (mode !== "signup" && otpCode.trim()) onInvitationAccepted();
         else if (mode !== "signup") onSignedIn();
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
@@ -330,23 +358,6 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
       }
     } finally {
       onAuthFlowFinished();
-      setBusy(false);
-    }
-  }
-
-  async function resendVerification() {
-    if (!verificationUser) return;
-    setBusy(true);
-    setError("");
-    try {
-      await sendEmailVerification(verificationUser, {
-        url: window.location.origin,
-        handleCodeInApp: false,
-      });
-      setMessage("A new verification email has been sent.");
-    } catch (authError) {
-      setError(authError.message || "Could not send the verification email.");
-    } finally {
       setBusy(false);
     }
   }
@@ -385,21 +396,18 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           <div className="auth-card-heading">
             <p className="eyebrow">SECURE STAFF PORTAL</p>
             <h2>{verificationUser ? "Verify your email" : mode === "login" ? "Welcome back" : "Create your account"}</h2>
-            <p>{verificationUser ? "Check your inbox and spam folder for a Firebase verification link. If you don’t see it, you can resend it below." : mode === "login" ? "Sign in with your school account to continue." : "Use the invitation sent by your administrator."}</p>
+            <p>{verificationUser ? "Enter the one-time code sent to your email to verify your account." : mode === "login" ? "Sign in with your school account to continue." : "Use the invitation sent by your administrator."}</p>
           </div>
           {error && <div className="auth-message error-message" role="alert">{error}</div>}
           {mode === "signup" && inviteCode && inviteLookupStatus === "loading" && <div className="auth-message" role="status">Checking your invitation…</div>}
           {mode === "signup" && inviteLookupError && <div className="auth-message error-message" role="alert">{inviteLookupError}</div>}
           {message && <div className="auth-message success-message" role="status">{message}</div>}
           {verificationUser ? (
-            <div className="verification-actions">
-              <button className="primary-button full-width" type="button" disabled={busy} onClick={resendVerification}>
-                {busy ? "Sending…" : "Resend verification email"}
-              </button>
-              <button className="text-button" type="button" onClick={() => { setVerificationUser(null); setMessage(""); setMode("login"); }}>
-                Return to sign in
-              </button>
-            </div>
+            <OtpVerificationForm
+              user={verificationUser}
+              onVerified={onAuthenticated}
+              onBack={() => { setVerificationUser(null); setMessage(""); setMode("login"); }}
+            />
           ) : (
             <>
               <div className="auth-tabs" role="tablist" aria-label="Account access">
@@ -408,13 +416,18 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
               </div>
               <form className="auth-form" onSubmit={submit}>
                 {mode === "signup" && <>
-                  <label htmlFor="signup-name">Full name</label>
-                  <input id="signup-name" autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" />
-                  <label htmlFor="invite-code">Invitation code</label>
-                  <input id="invite-code" autoComplete="off" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Required unless you are a configured administrator" />
-                </>}
+                          <label htmlFor="signup-name">Full name</label>
+                          <input id="signup-name" autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" />
+                        </>}
                 <label htmlFor="auth-email">Work email</label>
                 <input id="auth-email" type="email" autoComplete="email" required readOnly={mode === "signup" && Boolean(inviteCode && invitedEmail)} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
+                {(mode === "signup" || otpRequested) && <>
+                  <label htmlFor="auth-otp">Email verification code</label>
+                  <div className="otp-input-row">
+                    <input id="auth-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required={mode === "signup"} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" />
+                    <button className="clear-filter" type="button" disabled={busy || !email.trim()} onClick={requestOtp}>{busy ? "Sending…" : otpRequested ? "Resend code" : "Send code"}</button>
+                  </div>
+                </>}
                 <label htmlFor="auth-password">Password</label>
                 <input id="auth-password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"} />
                 {mode === "login" && <button className="forgot-link" type="button" onClick={resetPassword}>Forgot password?</button>}
@@ -432,7 +445,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
                 </svg>
                 {busy ? "Connecting…" : "Continue with Google"}
               </button>
-              <p className="invite-note">Accounts are invitation-only. Contact a school administrator if you need access.</p>
+              <p className="invite-note">Accounts are invitation-only. Enter the email code sent by your administrator. Contact an administrator if you need access.</p>
             </>
           )}
         </div>
@@ -637,7 +650,7 @@ function InvitationPanel({ user }) {
       </form>
       {error && <p className="invite-error" role="alert">{error}</p>}
       {invite && <div className="invite-result">
-        <span>Invitation email sent to {inviteRecipient}. It expires in 30 minutes. You can also share this link:</span>
+        <span>Invitation email sent to {inviteRecipient}. It expires in 7 days. You can also share this link:</span>
         <div className="invite-link-row">
           <a href={invite}>{invite}</a>
           <button type="button" className="clear-filter" onClick={() => navigator.clipboard.writeText(invite)}>Copy invite link</button>
@@ -708,7 +721,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [error, setError] = useState("");
   const [fromMonth, setFromMonth] = useState("");
   const [toMonth, setToMonth] = useState("");
-  const [appliedRange, setAppliedRange] = useState({ from: "", to: "" });
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [classValue, setClassValue] = useState("");
@@ -716,7 +728,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [itemSummary, setItemSummary] = useState("");
   const [category, setCategory] = useState("");
   const [appliedFilters, setAppliedFilters] = useState({ class: "", studentName: "", itemSummary: "", category: "" });
-  const [dateError, setDateError] = useState("");
   const [invitationError, setInvitationError] = useState("");
   const [invitationExpiresAt, setInvitationExpiresAt] = useState(null);
   const [clock, setClock] = useState(Date.now());
@@ -766,11 +777,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (Boolean(appliedRange.from) !== Boolean(appliedRange.to) || appliedRange.from > appliedRange.to) {
-        setDateError("Choose both months and make sure the start is not after the end.");
-        return;
-      }
-      setDateError("");
       setLoading(true);
       setError("");
       setStatus("Loading payment records…");
@@ -779,10 +785,8 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       try {
         do {
           const params = new URLSearchParams();
-          if (appliedRange.from && appliedRange.to) {
-            params.set("fromMonth", appliedRange.from);
-            params.set("toMonth", appliedRange.to);
-          }
+          if (fromMonth) params.set("fromMonth", fromMonth);
+          if (toMonth) params.set("toMonth", toMonth);
           if (cursor) params.set("cursor", cursor);
           const result = await apiRequest(`/api/payments${params.size ? `?${params}` : ""}`, user);
           loaded.push(...result.records);
@@ -806,7 +810,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [appliedRange, user]);
+  }, [fromMonth, toMonth, user]);
 
   const classes = useMemo(() => {
     const values = new Map();
@@ -859,16 +863,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     return totals;
   }, [matchingRecords]);
 
-  async function applyDateRange(event) {
-    event.preventDefault();
-    if (Boolean(fromMonth) !== Boolean(toMonth) || fromMonth > toMonth) {
-      setDateError("Choose both months and make sure the start is not after the end.");
-      return;
-    }
-    setDateError("");
-    setAppliedRange({ from: fromMonth, to: toMonth });
-  }
-
   function applyFilters(event) {
     event.preventDefault();
     setAppliedFilters({
@@ -913,11 +907,10 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         <PasswordLinkPanel user={user} />
       </div>
 
-      <form className="report-controls" onSubmit={applyDateRange}>
+      <div className="report-controls">
         <MonthPicker id="from-month" label="From" value={fromMonth} max={toMonth} onChange={setFromMonth} />
         <MonthPicker id="to-month" label="To" value={toMonth} min={fromMonth} onChange={setToMonth} />
-        <button className="apply-filters date-apply" type="submit">Apply dates</button>
-        <button className="clear-filter" type="button" onClick={() => { setFromMonth(""); setToMonth(""); setAppliedRange({ from: "", to: "" }); setDateError(""); }}>Clear dates</button>
+        <button className="clear-filter" type="button" onClick={() => { setFromMonth(""); setToMonth(""); }}>Clear dates</button>
         <label className="search-field">
           <span className="visually-hidden">Search loaded records</span>
           <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.2 4.2" /></svg>
@@ -928,9 +921,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           <span>Filters</span>{activeFilterCount > 0 && <span className="filter-count">{activeFilterCount}</span>}
         </button>
         <span className="record-count" aria-live="polite">{loading ? `${records.length} loaded` : `${visibleRecords.length} shown · ${records.length} loaded`}</span>
-      </form>
-      {dateError && <p className="inline-error" role="alert">{dateError}</p>}
-
+      </div>
       {filterOpen && <form className="advanced-filters" onSubmit={applyFilters}>
         <div className="filter-inputs">
           <CustomSelect label="Class" value={classValue} options={[{ value: "", label: "All classes" }, ...classes]} onChange={setClassValue} />
@@ -1057,7 +1048,7 @@ export default function App() {
           user={user}
           onSignOut={signOutUser}
           onAccessExpired={() => {
-            setAuthError("Access to this account has expired. Ask an administrator for a new invitation, then sign in through its link.");
+            setAuthError("Access to this account has expired. Ask an administrator for a new invitation, then sign in with its email code.");
             setAuthStatus("access-denied");
           }}
         />
@@ -1098,19 +1089,45 @@ function AuthToast({ message, type }) {
   );
 }
 
-function VerificationPage({ user, onSignOut, onVerified }) {
+function OtpVerificationForm({ user, onVerified, onBack, onSignOut }) {
+  const [otpCode, setOtpCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  async function checkVerification() {
+
+  async function requestCode() {
     setBusy(true);
     setError("");
     try {
-      await reload(user);
-      if (!user.emailVerified) {
-        setMessage("We haven’t received verification yet. Open the link in your email, then try again.");
-        return;
-      }
+      const response = await fetch("/api/auth/otp", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not send a verification code."));
+      setMessage(result.message || "Check your email for the six-digit verification code.");
+    } catch (requestError) {
+      setError(requestError.message || "Could not send a verification code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyCode(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest("/api/auth/register", user, {
+        method: "POST",
+        body: JSON.stringify({
+          displayName: user.displayName || "",
+          otpCode,
+        }),
+      });
+      await user.reload();
       await user.getIdToken(true);
       await onVerified(user);
     } catch (verificationError) {
@@ -1119,32 +1136,39 @@ function VerificationPage({ user, onSignOut, onVerified }) {
       setBusy(false);
     }
   }
-  async function resend() {
-    setBusy(true);
-    setError("");
-    try {
-      await sendEmailVerification(user, { url: window.location.origin });
-      setMessage("A new verification link has been sent.");
-    } catch (sendError) {
-      setError(sendError.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">ONE MORE STEP</p><h2>Verify your email</h2><p>Your email address <strong>{user.email}</strong> isn’t verified yet. Check your inbox and spam folder for a Firebase verification link, or resend it below.</p></div>
+
+  return <>
+    <form className="auth-form" onSubmit={verifyCode}>
+      <label htmlFor="verification-otp">Email verification code</label>
+      <div className="otp-input-row">
+        <input id="verification-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" />
+        <button className="clear-filter" type="button" disabled={busy} onClick={requestCode}>{busy ? "Sending…" : "Send code"}</button>
+      </div>
+      <button className="primary-button full-width" type="submit" disabled={busy || !/^\d{6}$/.test(otpCode)}>
+        {busy ? "Verifying…" : "Verify email and continue"}
+      </button>
+    </form>
     {message && <div className="auth-message success-message" role="status">{message}</div>}
     {error && <div className="auth-message error-message" role="alert">{error}</div>}
-    <button className="primary-button full-width" disabled={busy} onClick={checkVerification}>{busy ? "Checking…" : "I’ve verified — continue"}</button>
-    <button className="primary-button full-width" disabled={busy} onClick={resend}>{busy ? "Sending…" : "Resend verification email"}</button>
-    <button className="text-button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Return to sign in</button>
+    {onBack ? (
+      <button className="text-button" type="button" onClick={onBack}>Return to sign in</button>
+    ) : (
+      <button className="text-button" type="button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Return to sign in</button>
+    )}
+  </>;
+}
+
+function VerificationPage({ user, onSignOut, onVerified }) {
+  return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">ONE MORE STEP</p><h2>Verify your email</h2><p>Your email address <strong>{user.email}</strong> isn’t verified yet. Request a one-time code and enter it below.</p></div>
+    <OtpVerificationForm user={user} onVerified={onVerified} onSignOut={onSignOut} />
   </div></section></main>;
 }
 
 function AccessDeniedPage({ error, onSignOut, serverError = false }) {
   const invitationExpired = /access to this account has expired/i.test(error);
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>{invitationExpired ? "Your invitation has expired" : "We couldn’t verify access"}</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : invitationExpired ? "Ask an administrator to send you a new invitation. Open its link and sign in with your existing account to restore access." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>{invitationExpired ? "Your invitation has expired" : "We couldn’t verify access"}</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : invitationExpired ? "Ask an administrator to send you a new invitation. Enter its email code and sign in with your existing account to restore access." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
     <button className="primary-button full-width" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
   </div></section></main>;
 }

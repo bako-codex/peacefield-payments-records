@@ -33,13 +33,6 @@ module.exports = async function payments(request, response) {
     let startTimestamp;
     let endTimestamp;
     if (hasMonthRange) {
-      if (!fromMonth || !toMonth) {
-        sendJson(response, 400, {
-          error: "Provide both fromMonth and toMonth, or leave both empty.",
-        });
-        return;
-      }
-
       const parseMonth = (value) => {
         const match = /^(\d{4})-(\d{2})$/.exec(value);
         const year = match ? Number(match[1]) : 0;
@@ -49,32 +42,32 @@ module.exports = async function payments(request, response) {
         }
         return { year, monthNumber };
       };
-      const from = parseMonth(fromMonth);
-      const to = parseMonth(toMonth);
-      if (!from || !to) {
+      const from = fromMonth ? parseMonth(fromMonth) : null;
+      const to = toMonth ? parseMonth(toMonth) : null;
+      if ((fromMonth && !from) || (toMonth && !to)) {
         sendJson(response, 400, { error: "Months must use the YYYY-MM format." });
         return;
       }
-      if (fromMonth > toMonth) {
+      if (from && to && fromMonth > toMonth) {
         sendJson(response, 400, {
           error: "The starting month must be on or before the ending month.",
         });
         return;
       }
 
-      const nextYear = to.monthNumber === 12 ? to.year + 1 : to.year;
-      const nextMonth = to.monthNumber === 12 ? 1 : to.monthNumber + 1;
-      startTimestamp = `${fromMonth}-01T00:00:00.000Z`;
-      endTimestamp = `${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000Z`;
+      if (from) startTimestamp = `${fromMonth}-01T00:00:00.000Z`;
+      if (to) {
+        const nextYear = to.monthNumber === 12 ? to.year + 1 : to.year;
+        const nextMonth = to.monthNumber === 12 ? 1 : to.monthNumber + 1;
+        endTimestamp = `${String(nextYear).padStart(4, "0")}-${String(nextMonth).padStart(2, "0")}-01T00:00:00.000Z`;
+      }
     }
 
     let query = db.collection("payments");
     if (hasMonthRange) {
-      query = query
-        .where("timestamp", ">=", startTimestamp)
-        .where("timestamp", "<", endTimestamp)
-        .orderBy("timestamp")
-        .orderBy(FieldPath.documentId());
+      if (startTimestamp) query = query.where("timestamp", ">=", startTimestamp);
+      if (endTimestamp) query = query.where("timestamp", "<", endTimestamp);
+      query = query.orderBy("timestamp").orderBy(FieldPath.documentId());
     } else {
       query = query.orderBy(FieldPath.documentId());
     }

@@ -4,7 +4,7 @@ const {
   authenticateRequest,
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
-const { hashInvitation, normalizeEmail } = require("../../lib/server/invitation");
+const { hashInvitation, hashOtp, normalizeEmail } = require("../../lib/server/invitation");
 const { Timestamp } = require("firebase-admin/firestore");
 
 module.exports = async function register(request, response) {
@@ -17,7 +17,7 @@ module.exports = async function register(request, response) {
   try {
     const decoded = await authenticateRequest(request, { requireVerified: false });
     const email = normalizeEmail(decoded.email);
-    const { displayName, invitationCode } = request.body || {};
+    const { displayName, otpCode } = request.body || {};
     const admins = (process.env.ADMIN_EMAILS || "").split(",").map(normalizeEmail).filter(Boolean);
     const isConfiguredAdmin = admins.includes(email);
     if (!email) {
@@ -33,69 +33,129 @@ module.exports = async function register(request, response) {
       return;
     }
 
-    if (isConfiguredAdmin) {
-      if (existingProfile.exists) {
-        sendJson(response, 200, { ok: true });
-        return;
-      }
-      await db.runTransaction(async (transaction) => {
-        const profile = await transaction.get(userRef);
-        if (profile.exists) {
-          if (normalizeEmail(profile.get("email")) !== email) {
-            const error = new Error("The signed-in email does not match this account profile.");
-            error.status = 403;
-            throw error;
+    if (isConfiguredAdmin && existingProfile.exists && !otpCode) {
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+
+    if (isConfiguredAdmin && !existingProfile.exists) {
+      const challengeRef = db.collection("authOtpChallenges").doc(hashInvitation(email));
+      const validCode = typeof otpCode === "string" && /^\d{6}$/.test(otpCode);
+      const registered = await db.runTransaction(async (transaction) => {
+        const [challenge, profile] = await Promise.all([
+          transaction.get(challengeRef),
+          transaction.get(userRef),
+        ]);
+        if (profile.exists) return false;
+        const expiresAt = challenge.get("expiresAt");
+        if (
+          !challenge.exists ||
+          challenge.get("usedAt") ||
+          challenge.get("attempts") >= 5 ||
+          !expiresAt ||
+          expiresAt.toMillis() <= Date.now() ||
+          !validCode ||
+          challenge.get("otpHash") !== hashOtp(email, otpCode)
+        ) {
+          if (challenge.exists && !challenge.get("usedAt")) {
+            transaction.update(challengeRef, { attempts: (challenge.get("attempts") || 0) + 1 });
           }
-          return;
+          return false;
         }
+        transaction.update(challengeRef, { usedAt: Timestamp.now() });
         transaction.create(userRef, {
           email,
           displayName: String(displayName ?? "").trim().slice(0, 100),
           status: "pending_verification",
           createdAt: Timestamp.now(),
         });
+        return true;
       });
-    } else {
-      if (typeof invitationCode !== "string" || invitationCode.length < 20) {
-        sendJson(response, 400, { error: "Enter a valid invitation code." });
+      if (!registered) {
+        sendJson(response, 403, { error: "The one-time code is invalid, expired, or has already been used." });
         return;
       }
-      const invitationRef = db.collection("authInvitations").doc(hashInvitation(invitationCode));
-      await db.runTransaction(async (transaction) => {
-        const [invitation, profile] = await Promise.all([
-          transaction.get(invitationRef),
-          transaction.get(userRef),
-        ]);
-        const expiry = invitation.get("expiresAt");
-        if (
-          !invitation.exists ||
-          invitation.get("email") !== email ||
-          invitation.get("usedAt") ||
-          invitation.get("deliveryStatus") === "pending" ||
-          !expiry ||
-          expiry.toMillis() <= Date.now()
-        ) {
-          const error = new Error("This invitation is invalid, expired, or for a different email.");
-          error.status = 403;
-          throw error;
-        }
-        transaction.update(invitationRef, {
-          usedAt: Timestamp.now(),
-          usedBy: decoded.uid,
+    } else if (!isConfiguredAdmin || otpCode) {
+      if (typeof otpCode !== "string" || !/^\d{6}$/.test(otpCode)) {
+        sendJson(response, 400, { error: "Enter the six-digit code sent to your email." });
+        return;
+      }
+      if (isConfiguredAdmin) {
+        const challengeRef = db.collection("authOtpChallenges").doc(hashInvitation(email));
+        const registered = await db.runTransaction(async (transaction) => {
+          const challenge = await transaction.get(challengeRef);
+          const expiry = challenge.get("expiresAt");
+          if (
+            !challenge.exists ||
+            challenge.get("usedAt") ||
+            challenge.get("attempts") >= 5 ||
+            !expiry ||
+            expiry.toMillis() <= Date.now() ||
+            challenge.get("otpHash") !== hashOtp(email, otpCode)
+          ) {
+            if (challenge.exists && !challenge.get("usedAt")) {
+              transaction.update(challengeRef, { attempts: (challenge.get("attempts") || 0) + 1 });
+            }
+            return false;
+          }
+          transaction.update(challengeRef, { usedAt: Timestamp.now() });
+          return true;
         });
-        const accountData = {
-          email,
-          accessExpiresAt: expiry,
-        };
-        if (!profile.exists) {
-          accountData.displayName = String(displayName ?? "").trim().slice(0, 100);
-          accountData.status = "pending_verification";
-          accountData.createdAt = Timestamp.now();
+        if (!registered) {
+          sendJson(response, 403, { error: "The one-time code is invalid, expired, or has already been used." });
+          return;
         }
-        transaction.set(userRef, accountData, { merge: true });
-      });
+      } else {
+        const invitationQuery = db.collection("authInvitations").where("email", "==", email).limit(10);
+        const registered = await db.runTransaction(async (transaction) => {
+          const [invitations, profile] = await Promise.all([
+            transaction.get(invitationQuery),
+            transaction.get(userRef),
+          ]);
+          const invitation = invitations.docs.find((document) => {
+            const expiry = document.get("expiresAt");
+            return !document.get("usedAt") &&
+              document.get("deliveryStatus") !== "pending" &&
+              expiry &&
+              expiry.toMillis() > Date.now();
+          });
+          if (!invitation) return false;
+          const expiry = invitation.get("expiresAt");
+          const otpExpiry = invitation.get("otpExpiresAt") || expiry;
+          if (
+            invitation.get("otpAttempts") >= 5 ||
+            !otpExpiry ||
+            otpExpiry.toMillis() <= Date.now() ||
+            invitation.get("otpHash") !== hashOtp(email, otpCode)
+          ) {
+            transaction.update(invitation.ref, { otpAttempts: (invitation.get("otpAttempts") || 0) + 1 });
+            return false;
+          }
+          if (profile.exists && normalizeEmail(profile.get("email")) !== email) return false;
+          transaction.update(invitation.ref, {
+            usedAt: Timestamp.now(),
+            usedBy: decoded.uid,
+          });
+          const accountData = {
+            email,
+            accessExpiresAt: expiry,
+          };
+          if (!profile.exists) {
+            accountData.displayName = String(displayName ?? "").trim().slice(0, 100);
+            accountData.status = "pending_verification";
+            accountData.createdAt = Timestamp.now();
+          }
+          transaction.set(userRef, accountData, { merge: true });
+          return true;
+        });
+        if (!registered) {
+          sendJson(response, 403, { error: "The one-time code is invalid, expired, or has already been used for this invitation." });
+          return;
+        }
+      }
     }
 
+    await getServices().auth.updateUser(decoded.uid, { emailVerified: true });
     sendJson(response, 200, { ok: true });
   } catch (error) {
     handleApiError(response, error, "Could not register this account.");

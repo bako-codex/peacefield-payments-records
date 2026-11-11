@@ -1647,10 +1647,6 @@ td:nth-child(9) {
   white-space: nowrap;
 }
 
-.date-apply {
-  min-height: 40px;
-}
-
 .report-controls .search-field {
   flex: 1 1 260px;
 }
