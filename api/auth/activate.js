@@ -5,7 +5,7 @@ const {
   requireUnexpiredAccess,
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
-const { normalizeEmail } = require("../../lib/server/invitation");
+const { normalizeEmail } = require("../../lib/server/access");
 
 module.exports = async function activate(request, response) {
   if (request.method !== "POST") {
@@ -20,7 +20,7 @@ module.exports = async function activate(request, response) {
     const userRef = db.collection("users").doc(decoded.uid);
     const profile = await userRef.get();
     if (!profile.exists || normalizeEmail(profile.get("email")) !== normalizeEmail(decoded.email)) {
-      sendJson(response, 403, { error: "This account was not created with a valid invitation." });
+      sendJson(response, 403, { error: "This account does not have an approved access request." });
       return;
     }
     await requireUnexpiredAccess(decoded, profile, userRef);

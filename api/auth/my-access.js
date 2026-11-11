@@ -5,10 +5,10 @@ const {
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
 
-module.exports = async function getMyInvitation(request, response) {
+module.exports = async function getMyAccess(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
-    sendJson(response, 405, { error: "Use GET to check your invitation." });
+    sendJson(response, 405, { error: "Use GET to check your account access." });
     return;
   }
 
@@ -29,6 +29,6 @@ module.exports = async function getMyInvitation(request, response) {
       expiresAt: expiry?.toDate().toISOString() || null,
     });
   } catch (error) {
-    handleApiError(response, error, "Could not check this account's invitation.");
+    handleApiError(response, error, "Could not check this account's access.");
   }
 };

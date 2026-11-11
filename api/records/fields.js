@@ -5,7 +5,7 @@ const {
   requireActiveUser,
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
-const { normalizeEmail } = require("../../lib/server/invitation");
+const { normalizeEmail } = require("../../lib/server/access");
 
 const allowedFields = [
   "timestamp",

@@ -6,11 +6,9 @@ const apiHandlers = {
   "/api/payments": localRequire("./api/payments.js"),
   "/api/auth/register": localRequire("./api/auth/register.js"),
   "/api/auth/activate": localRequire("./api/auth/activate.js"),
-  "/api/auth/invitations": localRequire("./api/auth/invitations.js"),
-  "/api/auth/otp": localRequire("./api/auth/otp.js"),
-  "/api/auth/verify-otp": localRequire("./api/auth/verify-otp.js"),
-  "/api/auth/invitation-details": localRequire("./api/auth/invitation-details.js"),
-  "/api/auth/my-invitation": localRequire("./api/auth/my-invitation.js"),
+  "/api/auth/request-access": localRequire("./api/auth/request-access.js"),
+  "/api/auth/access-requests": localRequire("./api/auth/access-requests.js"),
+  "/api/auth/my-access": localRequire("./api/auth/my-access.js"),
   "/api/records/fields": localRequire("./api/records/fields.js"),
 };
 
@@ -30,7 +28,7 @@ module.exports = defineConfig(({ mode }) => {
           }
 
           try {
-            if (request.method === "POST") {
+            if (["POST", "PATCH"].includes(request.method)) {
               const chunks = [];
               let size = 0;
               for await (const chunk of request) {

@@ -4,13 +4,13 @@ const {
   authenticateRequest,
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
-const { hashInvitation, hashOtp, normalizeEmail } = require("../../lib/server/invitation");
+const { ACCESS_CODE_DURATION_MS, hashEmail, hashOtp, normalizeEmail } = require("../../lib/server/access");
 const { Timestamp } = require("firebase-admin/firestore");
 
 module.exports = async function register(request, response) {
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
-    sendJson(response, 405, { error: "Use POST to register an invited account." });
+    sendJson(response, 405, { error: "Use POST to register or renew approved account access." });
     return;
   }
 
@@ -39,7 +39,7 @@ module.exports = async function register(request, response) {
     }
 
     if (isConfiguredAdmin && !existingProfile.exists) {
-      const challengeRef = db.collection("authOtpChallenges").doc(hashInvitation(email));
+      const challengeRef = db.collection("authOtpChallenges").doc(hashEmail(email));
       const validCode = typeof otpCode === "string" && /^\d{6}$/.test(otpCode);
       const registered = await db.runTransaction(async (transaction) => {
         const [challenge, profile] = await Promise.all([
@@ -81,7 +81,7 @@ module.exports = async function register(request, response) {
         return;
       }
       if (isConfiguredAdmin) {
-        const challengeRef = db.collection("authOtpChallenges").doc(hashInvitation(email));
+        const challengeRef = db.collection("authOtpChallenges").doc(hashEmail(email));
         const registered = await db.runTransaction(async (transaction) => {
           const challenge = await transaction.get(challengeRef);
           const expiry = challenge.get("expiresAt");
@@ -106,39 +106,52 @@ module.exports = async function register(request, response) {
           return;
         }
       } else {
-        const invitationQuery = db.collection("authInvitations").where("email", "==", email).limit(10);
+        const requestRef = db.collection("authAccessRequests").doc(hashEmail(email));
         const registered = await db.runTransaction(async (transaction) => {
-          const [invitations, profile] = await Promise.all([
-            transaction.get(invitationQuery),
+          const [accessRequest, profile] = await Promise.all([
+            transaction.get(requestRef),
             transaction.get(userRef),
           ]);
-          const invitation = invitations.docs.find((document) => {
-            const expiry = document.get("expiresAt");
-            return !document.get("usedAt") &&
-              document.get("deliveryStatus") !== "pending" &&
-              expiry &&
-              expiry.toMillis() > Date.now();
-          });
-          if (!invitation) return false;
-          const expiry = invitation.get("expiresAt");
-          const otpExpiry = invitation.get("otpExpiresAt") || expiry;
+          if (!accessRequest.exists) return false;
+          const expiry = accessRequest.get("expiresAt");
+          const otpExpiry = accessRequest.get("otpExpiresAt");
+          const codeMatches = accessRequest.get("otpHash") === hashOtp(email, otpCode);
           if (
-            invitation.get("otpAttempts") >= 5 ||
+            accessRequest.get("status") === "used" &&
+            accessRequest.get("usedBy") === decoded.uid &&
+            expiry &&
+            expiry.toMillis() > Date.now() &&
+            otpExpiry &&
+            otpExpiry.toMillis() > Date.now() &&
+            codeMatches
+          ) return true;
+          if (accessRequest.get("status") !== "code_sent") return false;
+          if (
+            accessRequest.get("otpAttempts") >= 5 ||
+            !expiry ||
+            expiry.toMillis() <= Date.now() ||
             !otpExpiry ||
             otpExpiry.toMillis() <= Date.now() ||
-            invitation.get("otpHash") !== hashOtp(email, otpCode)
+            !codeMatches
           ) {
-            transaction.update(invitation.ref, { otpAttempts: (invitation.get("otpAttempts") || 0) + 1 });
+            if (accessRequest.exists && accessRequest.get("status") === "code_sent") {
+              transaction.update(requestRef, {
+                otpAttempts: (accessRequest.get("otpAttempts") || 0) + 1,
+              });
+            }
             return false;
           }
           if (profile.exists && normalizeEmail(profile.get("email")) !== email) return false;
-          transaction.update(invitation.ref, {
+          const accessExpiry = Timestamp.fromDate(new Date(Date.now() + ACCESS_CODE_DURATION_MS));
+          transaction.update(requestRef, {
+            status: "used",
             usedAt: Timestamp.now(),
             usedBy: decoded.uid,
+            accessExpiresAt: accessExpiry,
           });
           const accountData = {
             email,
-            accessExpiresAt: expiry,
+            accessExpiresAt: accessExpiry,
           };
           if (!profile.exists) {
             accountData.displayName = String(displayName ?? "").trim().slice(0, 100);
@@ -149,7 +162,7 @@ module.exports = async function register(request, response) {
           return true;
         });
         if (!registered) {
-          sendJson(response, 403, { error: "The one-time code is invalid, expired, or has already been used for this invitation." });
+          sendJson(response, 403, { error: "The one-time code is invalid, expired, or has already been used for this access request." });
           return;
         }
       }

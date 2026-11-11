@@ -1157,15 +1157,14 @@ td:nth-child(9) {
 }
 
 .auth-form label,
-.invite-panel label {
+.account-panel label {
   margin-top: 8px;
   color: var(--brand-ink);
   font-size: 0.84rem;
   font-weight: 650;
 }
 
-.auth-form input,
-.invite-form-row input {
+.auth-form input {
   width: 100%;
   min-height: 46px;
   padding: 0 13px;
@@ -1176,8 +1175,7 @@ td:nth-child(9) {
   font-size: 0.92rem;
 }
 
-.auth-form input:focus,
-.invite-form-row input:focus {
+.auth-form input:focus {
   border-color: var(--brand-magenta);
   outline: 3px solid rgba(230, 0, 93, 0.1);
 }
@@ -1284,7 +1282,7 @@ td:nth-child(9) {
   margin: 12px auto 0;
 }
 
-.invite-note {
+.access-note {
   margin: 20px 0 0;
   color: var(--brand-muted);
   font-size: 0.78rem;
@@ -1422,7 +1420,7 @@ td:nth-child(9) {
   text-overflow: ellipsis;
 }
 
-.invitation-countdown {
+.access-countdown {
   padding: 7px 10px;
   border: 1px solid #f0c3d3;
   border-radius: 999px;
@@ -1433,7 +1431,7 @@ td:nth-child(9) {
   white-space: nowrap;
 }
 
-.invitation-countdown-error {
+.access-countdown-error {
   color: #963f3f;
   font-size: 0.76rem;
 }
@@ -1502,7 +1500,7 @@ td:nth-child(9) {
   margin-bottom: 16px;
 }
 
-.invite-panel {
+.account-panel {
   width: 100%;
   max-width: 640px;
   min-width: 0;
@@ -1513,7 +1511,7 @@ td:nth-child(9) {
   background: #fff;
 }
 
-.invite-panel summary {
+.account-panel summary {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -1523,21 +1521,21 @@ td:nth-child(9) {
   list-style: none;
 }
 
-.invite-panel summary::-webkit-details-marker {
+.account-panel summary::-webkit-details-marker {
   display: none;
 }
 
-.invite-panel summary::marker {
+.account-panel summary::marker {
   content: "";
 }
 
-.invite-panel summary svg {
+.account-panel summary svg {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
 }
 
-.invite-panel form {
+.account-password-panel form {
   display: grid;
   gap: 8px;
   max-width: 580px;
@@ -1575,54 +1573,76 @@ td:nth-child(9) {
   outline: 3px solid rgba(230, 0, 93, 0.1);
 }
 
-.invite-form-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.invite-form-row input {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.invite-form-row .apply-filters {
-  flex: 0 0 auto;
-}
-
-.invite-result {
-  display: grid;
-  gap: 8px;
-  max-width: 580px;
-  margin-top: 14px;
-  color: var(--brand-muted);
-  font-size: 0.82rem;
-}
-
-.invite-link-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.invite-result a {
-  min-width: 0;
-  flex: 1;
-  overflow-wrap: anywhere;
-  color: var(--brand-magenta-dark);
-}
-
-.invite-link-row .clear-filter {
-  flex: 0 0 auto;
-  height: 34px;
-  padding: 0 10px;
-  white-space: nowrap;
-}
-
-.invite-error,
+.account-panel-error,
 .inline-error {
   color: #963f3f;
   font-size: 0.82rem;
+}
+
+.access-request-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.access-request {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--brand-border);
+  border-radius: 12px;
+}
+
+.access-request-details,
+.access-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.access-request-details {
+  min-width: 0;
+  flex: 1;
+}
+
+.access-request-details strong,
+.access-request-details span {
+  overflow-wrap: anywhere;
+}
+
+.access-request-details small {
+  width: 100%;
+  color: var(--brand-muted);
+}
+
+.access-request-status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3eff1;
+  color: var(--brand-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.access-request-status.status-pending {
+  background: #fff3d6;
+  color: #795800;
+}
+
+.access-request-status.status-approved,
+.access-request-status.status-code-sent,
+.access-request-status.status-used {
+  background: #e8f5ed;
+  color: #27623e;
+}
+
+.access-request-status.status-rejected {
+  background: #fbeaea;
+  color: #963f3f;
 }
 
 .report-controls {
@@ -1755,6 +1775,11 @@ td:nth-child(9) {
     flex-direction: column;
   }
 
+  .access-request {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .filter-group {
     flex-wrap: wrap;
   }
@@ -1819,16 +1844,6 @@ td:nth-child(9) {
 
   .account-panels {
     grid-template-columns: 1fr;
-  }
-
-  .invite-form-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .invite-link-row {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .report-controls {

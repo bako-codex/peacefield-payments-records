@@ -171,86 +171,34 @@ function Brand({ compact = false }) {
   );
 }
 
-function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated, onSignedIn, onInvitationAccepted }) {
-  const [mode, setMode] = useState(new URLSearchParams(location.search).has("invite") ? "signup" : "login");
+function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAccountCreated, onSignedIn, onAccessRenewed }) {
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [otpRequested, setOtpRequested] = useState(false);
-  const [inviteCode, setInviteCode] = useState(new URLSearchParams(location.search).get("invite") || "");
-  const [invitedEmail, setInvitedEmail] = useState("");
-  const [inviteLookupStatus, setInviteLookupStatus] = useState(inviteCode ? "loading" : "");
-  const [inviteLookupError, setInviteLookupError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
 
-  useEffect(() => {
-    if (!inviteCode) {
-      setInvitedEmail("");
-      setEmail("");
-      setInviteLookupStatus("");
-      setInviteLookupError("");
-      return undefined;
-    }
-
-    let active = true;
-    setInvitedEmail("");
-    setEmail("");
-    setInviteLookupStatus("loading");
-    setInviteLookupError("");
-    fetch("/api/auth/invitation-details", {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ invitationCode: inviteCode.trim() }),
-    })
-      .then(async (response) => {
-        let result;
-        try {
-          result = await response.json();
-        } catch {
-          throw new Error("The server returned an invalid response while checking the invitation.");
-        }
-        if (!response.ok) {
-          throw new Error(getErrorMessage(result.error, "Could not verify this invitation."));
-        }
-        if (typeof result.email !== "string" || !result.email) {
-          throw new Error("This invitation does not include a valid email address.");
-        }
-        if (active) {
-          setInvitedEmail(result.email);
-          setEmail(result.email);
-          setInviteLookupStatus("ready");
-        }
-      })
-      .catch((lookupError) => {
-        if (active) {
-          setInviteLookupError(lookupError.message || "Could not verify this invitation.");
-          setInviteLookupStatus("error");
-        }
-      });
-
-    return () => { active = false; };
-  }, [inviteCode]);
-
-  async function requestOtp() {
+  async function requestAccess() {
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      const response = await fetch("/api/auth/otp", {
+      const response = await fetch("/api/auth/request-access", {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ name: name.trim(), email: email.trim() }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not send a verification code."));
+      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not submit an access request."));
       setOtpRequested(true);
-      setMessage(result.message || "Check your email for the six-digit verification code.");
+      setMessage(result.message || "Your access request was submitted. An administrator must approve it before a code is sent.");
     } catch (requestError) {
-      setError(requestError.message || "Could not send a verification code.");
+      setError(requestError.message || "Could not submit an access request.");
     } finally {
       setBusy(false);
     }
@@ -264,6 +212,10 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
     setMessage("");
     try {
       if (mode === "signup") {
+        if (!otpRequested) {
+          await requestAccess();
+          return;
+        }
         if (!/^\d{6}$/.test(otpCode)) {
           throw new Error("Enter the six-digit code sent to your email before creating an account.");
         }
@@ -306,7 +258,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           await credential.user.getIdToken(true);
         }
         await onAuthenticated(credential.user);
-        if (otpCode.trim()) onInvitationAccepted();
+        if (otpCode.trim()) onAccessRenewed();
         else onSignedIn();
       }
     } catch (authError) {
@@ -341,7 +293,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
         }
         if (mode === "signup") onAccountCreated();
         await onAuthenticated(credential.user);
-        if (mode !== "signup" && otpCode.trim()) onInvitationAccepted();
+        if (mode !== "signup" && otpCode.trim()) onAccessRenewed();
         else if (mode !== "signup") onSignedIn();
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
@@ -395,12 +347,10 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
         <div className="auth-card">
           <div className="auth-card-heading">
             <p className="eyebrow">SECURE STAFF PORTAL</p>
-            <h2>{verificationUser ? "Verify your email" : mode === "login" ? "Welcome back" : "Create your account"}</h2>
-            <p>{verificationUser ? "Enter the one-time code sent to your email to verify your account." : mode === "login" ? "Sign in with your school account to continue." : "Use the invitation sent by your administrator."}</p>
+            <h2>{verificationUser ? "Verify your email" : mode === "login" ? "Welcome back" : otpRequested ? "Complete account setup" : "Request staff access"}</h2>
+            <p>{verificationUser ? "An administrator must approve your access request before sending a one-time code." : mode === "login" ? "Sign in with your school account to continue." : otpRequested ? "Enter the code sent after an administrator approved your request." : "Request staff access. An administrator will review your request before sending a code."}</p>
           </div>
           {error && <div className="auth-message error-message" role="alert">{error}</div>}
-          {mode === "signup" && inviteCode && inviteLookupStatus === "loading" && <div className="auth-message" role="status">Checking your invitation…</div>}
-          {mode === "signup" && inviteLookupError && <div className="auth-message error-message" role="alert">{inviteLookupError}</div>}
           {message && <div className="auth-message success-message" role="status">{message}</div>}
           {verificationUser ? (
             <OtpVerificationForm
@@ -412,31 +362,33 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
             <>
               <div className="auth-tabs" role="tablist" aria-label="Account access">
                 <button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "is-active" : ""} onClick={() => { setMode("login"); setError(""); setMessage(""); }}>Sign in</button>
-                <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "is-active" : ""} onClick={() => { setMode("signup"); setError(""); setMessage(""); }}>Create account</button>
+                <button type="button" role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "is-active" : ""} onClick={() => { setMode("signup"); setError(""); setMessage(""); }}>Request access</button>
               </div>
               <form className="auth-form" onSubmit={submit}>
-                {mode === "signup" && <>
+                {mode === "signup" && !otpRequested && <>
                           <label htmlFor="signup-name">Full name</label>
                           <input id="signup-name" autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" />
                         </>}
                 <label htmlFor="auth-email">Work email</label>
-                <input id="auth-email" type="email" autoComplete="email" required readOnly={mode === "signup" && Boolean(inviteCode && invitedEmail)} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
-                {(mode === "signup" || otpRequested) && <>
+                <input id="auth-email" type="email" autoComplete="email" required readOnly={mode === "signup" && otpRequested} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
+                {(mode === "login" || otpRequested) && <>
                   <label htmlFor="auth-otp">Email verification code</label>
                   <div className="otp-input-row">
-                    <input id="auth-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required={mode === "signup"} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" />
-                    <button className="clear-filter" type="button" disabled={busy || !email.trim()} onClick={requestOtp}>{busy ? "Sending…" : otpRequested ? "Resend code" : "Send code"}</button>
+                    <input id="auth-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required={mode === "signup"} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={mode === "login" ? "Optional access code" : "6-digit code"} />
                   </div>
                 </>}
-                <label htmlFor="auth-password">Password</label>
-                <input id="auth-password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"} />
+                {mode === "login" || otpRequested ? <>
+                  <label htmlFor="auth-password">Password</label>
+                  <input id="auth-password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={mode === "signup" ? "At least 6 characters" : "Enter your password"} />
+                </> : null}
                 {mode === "login" && <button className="forgot-link" type="button" onClick={resetPassword}>Forgot password?</button>}
-                <button className="primary-button full-width" type="submit" disabled={busy || (mode === "signup" && Boolean(inviteCode) && inviteLookupStatus !== "ready")}>
-                  {busy ? "Please wait…" : mode === "login" ? "Sign in securely" : "Create account"}
+                <button className="primary-button full-width" type="submit" disabled={busy}>
+                  {busy ? "Please wait…" : mode === "login" ? "Sign in securely" : otpRequested ? "Create account" : "Submit access request"}
                 </button>
               </form>
+              {(mode === "login" || otpRequested) && <>
               <div className="auth-divider"><span>or</span></div>
-              <button className="google-button" type="button" disabled={busy || (mode === "signup" && Boolean(inviteCode) && inviteLookupStatus !== "ready")} onClick={continueWithGoogle}>
+              <button className="google-button" type="button" disabled={busy} onClick={continueWithGoogle}>
                 <svg aria-hidden="true" viewBox="0 0 48 48" className="google-icon">
                   <path fill="#4285F4" d="M47.6 24.5c0-1.6-.1-3.1-.4-4.6H24v9h13.2c-.6 2.9-2.3 5.3-4.8 7l7.8 6c4.6-4.2 7.4-10.3 7.4-17.4Z" />
                   <path fill="#34A853" d="M24 48c6.5 0 12-2.1 16-5.8l-7.8-6c-2.1 1.4-4.8 2.3-8.2 2.3-6.3 0-11.6-4.2-13.5-9.9l-8 6.2C6.5 42.6 14.6 48 24 48Z" />
@@ -445,7 +397,8 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
                 </svg>
                 {busy ? "Connecting…" : "Continue with Google"}
               </button>
-              <p className="invite-note">Accounts are invitation-only. Enter the email code sent by your administrator. Contact an administrator if you need access.</p>
+              </>}
+              <p className="access-note">Staff access requires administrator approval. Approved requests receive a one-time email code valid for 7 days.</p>
             </>
           )}
         </div>
@@ -597,65 +550,80 @@ function CustomSelect({ label, value, options, onChange, className = "" }) {
   );
 }
 
-function InvitationPanel({ user }) {
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
+function AccessRequestsPanel({ user }) {
+  const [requests, setRequests] = useState([]);
+  const [canManage, setCanManage] = useState(null);
+  const [busyRequestId, setBusyRequestId] = useState("");
   const [error, setError] = useState("");
-  const [invite, setInvite] = useState("");
-  const [inviteRecipient, setInviteRecipient] = useState("");
-  const [canInvite, setCanInvite] = useState(false);
 
   useEffect(() => {
     let active = true;
-    apiRequest("/api/auth/invitations", user)
+    apiRequest("/api/auth/access-requests", user)
       .then((result) => {
-        if (active) setCanInvite(result.canInvite);
+        if (active) {
+          setRequests(result.requests);
+          setCanManage(true);
+        }
       })
-      .catch(() => {
-        if (active) setCanInvite(false);
+      .catch((requestError) => {
+        if (!active) return;
+        if (requestError.status === 403) {
+          setCanManage(false);
+        } else {
+          setError(requestError.message);
+        }
       });
     return () => { active = false; };
   }, [user]);
-  if (!canInvite) return null;
+  if (!canManage) return error ? <p className="account-panel-error" role="alert">{error}</p> : null;
 
-  async function createInvite(event) {
-    event.preventDefault();
-    setBusy(true);
+  async function updateRequest(id, action) {
+    setBusyRequestId(id);
     setError("");
-    setInvite("");
     try {
-      const result = await apiRequest("/api/auth/invitations", user, {
-        method: "POST",
-        body: JSON.stringify({ email }),
+      await apiRequest("/api/auth/access-requests", user, {
+        method: "PATCH",
+        body: JSON.stringify({ id, action }),
       });
-      setInvite(result.signupUrl);
-      setInviteRecipient(result.email);
-      setEmail("");
-    } catch (inviteError) {
-      setError(inviteError.message);
+      const result = await apiRequest("/api/auth/access-requests", user);
+      setRequests(result.requests);
+    } catch (requestError) {
+      setError(requestError.message);
     } finally {
-      setBusy(false);
+      setBusyRequestId("");
     }
   }
 
   return (
-    <details className="invite-panel">
-      <summary><BsPersonFillAdd aria-hidden="true" />Invite staff</summary>
-      <form onSubmit={createInvite}>
-        <label htmlFor="invite-email">Staff email</label>
-        <div className="invite-form-row">
-          <input id="invite-email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="staff@school.com" />
-          <button className="apply-filters" type="submit" disabled={busy}>{busy ? "Sending…" : "Send"}</button>
-        </div>
-      </form>
-      {error && <p className="invite-error" role="alert">{error}</p>}
-      {invite && <div className="invite-result">
-        <span>Invitation email sent to {inviteRecipient}. It expires in 7 days. You can also share this link:</span>
-        <div className="invite-link-row">
-          <a href={invite}>{invite}</a>
-          <button type="button" className="clear-filter" onClick={() => navigator.clipboard.writeText(invite)}>Copy invite link</button>
-        </div>
-      </div>}
+    <details className="account-panel access-requests-panel">
+      <summary><BsPersonFillAdd aria-hidden="true" />Staff access requests ({requests.filter(({ status }) => status === "pending").length} pending)</summary>
+      {error && <p className="account-panel-error" role="alert">{error}</p>}
+      {requests.length ? <div className="access-request-list">
+        {requests.map((request) => (
+          <div className="access-request" key={request.id}>
+            <div className="access-request-details">
+              <strong>{request.name}</strong>
+              <span>{request.email}</span>
+              <small>Requested {request.createdAt ? new Date(request.createdAt).toLocaleString() : "recently"}</small>
+              {request.expiresAt && <small>Code expires {new Date(request.expiresAt).toLocaleString()}</small>}
+            </div>
+            <div className="access-request-actions">
+              <span className={`access-request-status status-${request.status.replace(/_/g, "-")}`}>{request.status.replace(/_/g, " ")}</span>
+              {request.status === "pending" && <>
+                <button className="apply-filters" type="button" disabled={Boolean(busyRequestId)} onClick={() => updateRequest(request.id, "approve")}>
+                  {busyRequestId === request.id ? "Updating…" : "Approve"}
+                </button>
+                <button className="clear-filter" type="button" disabled={Boolean(busyRequestId)} onClick={() => updateRequest(request.id, "reject")}>Reject</button>
+              </>}
+              {["approved", "code_sent", "sending_code"].includes(request.status) && (
+                <button className="apply-filters" type="button" disabled={Boolean(busyRequestId)} onClick={() => updateRequest(request.id, "send-code")}>
+                  {busyRequestId === request.id ? "Sending…" : request.status === "approved" ? "Send OTP" : request.status === "sending_code" ? "Retry OTP" : "Resend OTP"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div> : <p className="account-password-help">No access requests yet.</p>}
     </details>
   );
 }
@@ -693,7 +661,7 @@ function PasswordLinkPanel({ user }) {
   }
 
   return (
-    <details className="invite-panel account-password-panel">
+    <details className="account-panel account-password-panel">
       <summary><TbPasswordUser aria-hidden="true" />{linked ? "Email and password sign-in enabled" : "Add email and password sign-in"}</summary>
       {linked ? (
         <p className="auth-message success-message">You can now sign in with {user.email} and the password you set, or continue with Google.</p>
@@ -728,8 +696,8 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [itemSummary, setItemSummary] = useState("");
   const [category, setCategory] = useState("");
   const [appliedFilters, setAppliedFilters] = useState({ class: "", studentName: "", itemSummary: "", category: "" });
-  const [invitationError, setInvitationError] = useState("");
-  const [invitationExpiresAt, setInvitationExpiresAt] = useState(null);
+  const [accessError, setAccessError] = useState("");
+  const [accessExpiresAt, setAccessExpiresAt] = useState(null);
   const [clock, setClock] = useState(Date.now());
   const expiryHandled = useRef(false);
   const onAccessExpiredRef = useRef(onAccessExpired);
@@ -737,14 +705,14 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
 
   useEffect(() => {
     let active = true;
-    apiRequest("/api/auth/my-invitation", user)
+    apiRequest("/api/auth/my-access", user)
       .then((result) => {
         if (active && typeof result.expiresAt === "string") {
-          setInvitationExpiresAt(result.expiresAt);
+          setAccessExpiresAt(result.expiresAt);
         }
       })
       .catch((lookupError) => {
-        if (active) setInvitationError(lookupError.message);
+        if (active) setAccessError(lookupError.message);
       });
     return () => { active = false; };
   }, [user]);
@@ -755,10 +723,10 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   }, []);
 
   useEffect(() => {
-    if (!invitationExpiresAt || expiryHandled.current) return undefined;
-    const remaining = new Date(invitationExpiresAt).getTime() - Date.now();
+    if (!accessExpiresAt || expiryHandled.current) return undefined;
+    const remaining = new Date(accessExpiresAt).getTime() - Date.now();
     function checkExpiry() {
-      if (Date.now() < new Date(invitationExpiresAt).getTime() || expiryHandled.current) return;
+      if (Date.now() < new Date(accessExpiresAt).getTime() || expiryHandled.current) return;
       expiryHandled.current = true;
       onAccessExpiredRef.current();
     }
@@ -772,7 +740,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       window.removeEventListener("focus", checkExpiry);
       document.removeEventListener("visibilitychange", checkExpiry);
     };
-  }, [invitationExpiresAt]);
+  }, [accessExpiresAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -895,15 +863,15 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </div>
         <div className="user-controls">
           <span className="user-email">{user.email}</span>
-          {invitationExpiresAt && <span className="invitation-countdown" title="Account access ends when this invitation expires. Ask an administrator for a new invitation to restore access.">{formatAccessCountdown(invitationExpiresAt, clock)}</span>}
-          {invitationError && <span className="invitation-countdown-error" role="alert">{invitationError}</span>}
+          {accessExpiresAt && <span className="access-countdown" title="Account access ends when this approved access code expires. Submit another access request to renew access.">{formatAccessCountdown(accessExpiresAt, clock)}</span>}
+          {accessError && <span className="access-countdown-error" role="alert">{accessError}</span>}
           <a className="make-payment-button" href="https://peacefieldpayments.com.ng" target="_blank" rel="noopener noreferrer">Make payment</a>
           <button className="signout-button" type="button" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
         </div>
       </header>
 
       <div className="account-panels">
-        <InvitationPanel user={user} />
+        <AccessRequestsPanel user={user} />
         <PasswordLinkPanel user={user} />
       </div>
 
@@ -974,7 +942,6 @@ export default function App() {
   const [notification, setNotification] = useState(null);
   const authFlowInProgress = useRef(false);
   const notificationId = useRef(0);
-  const hasInvitation = new URLSearchParams(window.location.search).has("invite");
 
   function showNotification(message, type = "success") {
     notificationId.current += 1;
@@ -1007,12 +974,6 @@ export default function App() {
     if (!auth) return undefined;
     return onAuthStateChanged(auth, async (firebaseUser) => {
       if (authFlowInProgress.current) return;
-      if (hasInvitation) {
-        setUser(null);
-        setVerificationUser(null);
-        setAuthStatus("signed-out");
-        return;
-      }
       if (!firebaseUser) {
         setUser(null);
         setVerificationUser(null);
@@ -1033,7 +994,7 @@ export default function App() {
         setAuthStatus(error.status === 401 || error.status === 403 ? "access-denied" : "server-error");
       }
     });
-  }, [hasInvitation]);
+  }, []);
 
   if (!isFirebaseConfigured) {
     return <SetupPage />;
@@ -1048,7 +1009,7 @@ export default function App() {
           user={user}
           onSignOut={signOutUser}
           onAccessExpired={() => {
-            setAuthError("Access to this account has expired. Ask an administrator for a new invitation, then sign in with its email code.");
+            setAuthError("Access to this account has expired. Submit a new access request and enter the code after an administrator approves it.");
             setAuthStatus("access-denied");
           }}
         />
@@ -1071,9 +1032,9 @@ export default function App() {
         onAuthenticated={activateUser}
         onAuthFlowStarted={() => { authFlowInProgress.current = true; }}
         onAuthFlowFinished={() => { authFlowInProgress.current = false; }}
-        onAccountCreated={() => showNotification("Account created successfully. Check your email to verify your account.")}
+        onAccountCreated={() => showNotification("Account created and email verified successfully.")}
         onSignedIn={() => showNotification("Signed in successfully.")}
-        onInvitationAccepted={() => showNotification("Invitation accepted. Account access has been renewed.")}
+        onAccessRenewed={() => showNotification("Access code accepted. Account access has been renewed.")}
       />
       {notification && <AuthToast key={notification.id} message={notification.message} type={notification.type} />}
     </>
@@ -1090,25 +1051,26 @@ function AuthToast({ message, type }) {
 }
 
 function OtpVerificationForm({ user, onVerified, onBack, onSignOut }) {
+  const [name, setName] = useState(user.displayName || "");
   const [otpCode, setOtpCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function requestCode() {
+  async function requestAccess() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/auth/otp", {
+      const response = await fetch("/api/auth/request-access", {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email }),
+        body: JSON.stringify({ name: name.trim(), email: user.email }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not send a verification code."));
-      setMessage(result.message || "Check your email for the six-digit verification code.");
+      if (!response.ok) throw new Error(getErrorMessage(result.error, "Could not submit an access request."));
+      setMessage(result.message || "Your request was submitted. An administrator must approve it before a code is sent.");
     } catch (requestError) {
-      setError(requestError.message || "Could not send a verification code.");
+      setError(requestError.message || "Could not submit an access request.");
     } finally {
       setBusy(false);
     }
@@ -1138,11 +1100,15 @@ function OtpVerificationForm({ user, onVerified, onBack, onSignOut }) {
   }
 
   return <>
+    <label htmlFor="verification-name">Full name</label>
+    <input id="verification-name" autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+    <button className="clear-filter" type="button" disabled={busy || !name.trim()} onClick={requestAccess}>
+      {busy ? "Submitting…" : "Submit access request"}
+    </button>
     <form className="auth-form" onSubmit={verifyCode}>
       <label htmlFor="verification-otp">Email verification code</label>
       <div className="otp-input-row">
         <input id="verification-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" />
-        <button className="clear-filter" type="button" disabled={busy} onClick={requestCode}>{busy ? "Sending…" : "Send code"}</button>
       </div>
       <button className="primary-button full-width" type="submit" disabled={busy || !/^\d{6}$/.test(otpCode)}>
         {busy ? "Verifying…" : "Verify email and continue"}
@@ -1160,15 +1126,15 @@ function OtpVerificationForm({ user, onVerified, onBack, onSignOut }) {
 
 function VerificationPage({ user, onSignOut, onVerified }) {
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">ONE MORE STEP</p><h2>Verify your email</h2><p>Your email address <strong>{user.email}</strong> isn’t verified yet. Request a one-time code and enter it below.</p></div>
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">ONE MORE STEP</p><h2>Verify your email</h2><p>Your email address <strong>{user.email}</strong> isn’t verified yet. Submit an access request; an administrator must approve it and send a code before you can continue.</p></div>
     <OtpVerificationForm user={user} onVerified={onVerified} onSignOut={onSignOut} />
   </div></section></main>;
 }
 
 function AccessDeniedPage({ error, onSignOut, serverError = false }) {
-  const invitationExpired = /access to this account has expired/i.test(error);
+  const accessExpired = /access to this account has expired/i.test(error);
   return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
-    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>{invitationExpired ? "Your invitation has expired" : "We couldn’t verify access"}</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : invitationExpired ? "Ask an administrator to send you a new invitation. Enter its email code and sign in with your existing account to restore access." : "Confirm that you used a valid staff invitation and verified your email address. Contact an administrator if this continues."}</p></div>
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">{serverError ? "SERVER ERROR" : "ACCESS NOT APPROVED"}</p><h2>{accessExpired ? "Your access has expired" : "We couldn’t verify access"}</h2><p>{error}</p><p>{serverError ? "This is a server configuration or temporary service problem, not an approval decision. Contact an administrator and try again after it is resolved." : accessExpired ? "Submit another access request. An administrator must approve it and send you a new code before access can be restored." : "Submit an access request or contact an administrator if this continues."}</p></div>
     <button className="primary-button full-width" onClick={onSignOut}><FaSignOutAlt aria-hidden="true" />Sign out</button>
   </div></section></main>;
 }

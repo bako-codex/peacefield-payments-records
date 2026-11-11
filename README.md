@@ -1,8 +1,8 @@
 # Peacefield Payments Reports
 
 A React payment report for Peacefield Private Schools. Staff sign in with
-Firebase Authentication, verify their email, and must have an active
-invitation-backed profile before the server will return payment records.
+Firebase Authentication, verify their email, and need an approved access
+request before the server will return payment records.
 Payment data is read from Firestore by authenticated Vercel API functions using
 Firebase Admin credentials; the browser never has direct payment access.
 
@@ -12,9 +12,10 @@ Firebase Admin credentials; the browser never has direct payment access.
    `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
    `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID`.
 2. Set `ADMIN_EMAILS` to a comma-separated list of administrator email
-   addresses on the local server. Matching Firebase accounts can create
-   invitations from the dashboard. This list must not be a `VITE_` variable.
-3. To email invitations locally, also set `BREVO_API_KEY` and `EMAIL_FROM` in
+   addresses on the local server. Matching Firebase accounts can review and
+   approve access requests from the dashboard. This list must not be a `VITE_`
+   variable.
+3. To email access codes locally, also set `BREVO_API_KEY` and `EMAIL_FROM` in
    `.env.local`. The sender address must be verified in Brevo; optionally set
    `EMAIL_FROM_NAME=Peacefield Records`.
 4. Authenticate Firebase Admin using Application Default Credentials:
@@ -60,35 +61,27 @@ Firebase Admin credentials; the browser never has direct payment access.
    from `.env.local`; those are server-side variables and must not use a
    `VITE_` prefix.
 5. Deploy the Firestore rules in `firestore.rules`. These deny direct client
-   reads/writes of payments and user profiles; the server verifies Firebase ID
-   tokens and active user profiles before using the Admin SDK.
+   reads/writes of payments, user profiles, and access requests; the server
+   verifies Firebase ID tokens and active user profiles before using the Admin
+   SDK.
 6. Deploy the project to Vercel. Vercel builds the React app and deploys
    `api/**/*.js` as serverless functions.
 
-An administrator signs up with an email listed in `ADMIN_EMAILS`, verifies it
-with the one-time code sent by email, and signs in. From **Invite staff**, the
-administrator creates a single-use, 7-day invitation and sends it to the staff
-member's exact email address through Brevo. The emailed one-time code expires
-after 30 minutes. Configure and verify the sender address in Brevo before
-sending.
-The staff member enters the emailed one-time code on the portal to create an
-account with email/password or Google. Codes are valid only for the email
-address they were sent to.
-Google accounts use their Google-verified email and still require an invitation,
-unless the email is listed in `ADMIN_EMAILS`. No public, unrestricted account
-can read payment data.
+Staff submit their name and email from **Request access**. Requests are private
+and visible only to configured administrators in the dashboard. An admin
+approves or rejects each request; after approving, the admin separately chooses
+**Send OTP**. The access code is emailed through Brevo, is valid for 7 days,
+and can be used once to create an account or renew an existing account's access.
+After the code is accepted, account access lasts 7 days. Users with Google
+accounts must use the same email address as the approved request. Configured
+administrators can request their own verification code without a separate
+approval. No public, unrestricted account can read payment data.
 
-Invited staff access expires with the 7-day invitation. After it expires,
-the user must ask an administrator for a new invitation and enter its emailed
-code. An existing staff account can sign in with that fresh code to renew access;
-configured administrators are not subject to invitation expiry.
-
-Email verification codes and invitations are sent through Brevo, so configure
-and verify the Brevo sender address. Firebase Authentication continues to send
-password-reset emails. For better inbox placement, authenticate the sending
-domain in Brevo and publish its recommended SPF/DKIM DNS records; inbox
-placement cannot be guaranteed. Keep the Brevo API key server-side and never
-put it in a `VITE_` variable.
+Configure and verify the Brevo sender address before sending codes. Firebase
+Authentication continues to send password-reset emails. For better inbox
+placement, authenticate the sending domain in Brevo and publish its recommended
+SPF/DKIM DNS records; inbox placement cannot be guaranteed. Keep the Brevo API
+key server-side and never put it in a `VITE_` variable.
 
 ## Data/report behavior
 
