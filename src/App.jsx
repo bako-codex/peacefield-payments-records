@@ -17,6 +17,7 @@ import { auth, isFirebaseConfigured } from "./firebase";
 import {
   createTuitionExportSheets,
   createTuitionWorkbook,
+  sortRecordsByClass,
   tuitionStudentKey,
 } from "./tuition-export.mjs";
 import { BsPersonFillAdd } from "react-icons/bs";
@@ -858,11 +859,16 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     });
   }, [records, search, appliedFilters]);
 
-  const visibleRecords = useMemo(() => matchingRecords.filter((record) => {
-    if (!appliedFilters.category) return true;
-    if (appliedFilters.category === "outstanding") return isOutstanding(record);
-    return displayValue(record.itemsSummary).toLocaleLowerCase().includes(appliedFilters.category);
-  }), [matchingRecords, appliedFilters.category]);
+  const visibleRecords = useMemo(() => {
+    const categoryMatches = matchingRecords.filter((record) => {
+      if (!appliedFilters.category) return true;
+      if (appliedFilters.category === "outstanding") return isOutstanding(record);
+      return displayValue(record.itemsSummary).toLocaleLowerCase().includes(appliedFilters.category);
+    });
+    return appliedFilters.class
+      ? categoryMatches
+      : sortRecordsByClass(categoryMatches, categoryClassKey);
+  }, [matchingRecords, appliedFilters.category, appliedFilters.class]);
 
   const tuitionCounts = useMemo(() => {
     const visibleStudents = new Map();

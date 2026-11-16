@@ -1,11 +1,42 @@
 import { strToU8, zipSync } from "fflate";
 
+const classGroups = [
+  ["reception"],
+  ["kg1"],
+  ["kg2"],
+  ["nur1"],
+  ["nur2"],
+  ["basic1"],
+  ["basic2"],
+  ["basic3", "basic34", "basic4"],
+  ["basic5"],
+  ["jss1"],
+  ["jss2"],
+  ["jss3"],
+  ["ss1"],
+  ["ss2"],
+  ["ss3"],
+];
+const classOrder = new Map(classGroups.flatMap((group, rank) =>
+  group.map((classKey) => [classKey, rank])));
+
 export function tuitionStudentKey(record, classKeyForRecord) {
   const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
   const classKey = classKeyForRecord(record.class);
   if (!name || !classKey) return null;
   const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
   return `${name}|${classKey}|${parentEmail}`;
+}
+
+export function sortRecordsByClass(records, classKeyForRecord) {
+  return [...records].sort((left, right) => {
+    const leftClass = String(left.class ?? "");
+    const rightClass = String(right.class ?? "");
+    const leftRank = classOrder.get(classKeyForRecord(leftClass)) ?? classGroups.length;
+    const rightRank = classOrder.get(classKeyForRecord(rightClass)) ?? classGroups.length;
+    return leftRank - rightRank ||
+      leftClass.localeCompare(rightClass, undefined, { numeric: true, sensitivity: "base" });
+  });
 }
 
 export function createTuitionExportSheets(records, statuses, classKeyForRecord) {
@@ -34,10 +65,7 @@ export function createTuitionExportSheets(records, statuses, classKeyForRecord) 
     });
   });
 
-  const sortByClassAndName = (left, right) =>
-    left.Class.localeCompare(right.Class, undefined, { numeric: true, sensitivity: "base" }) ||
-    left["Student name"].localeCompare(right["Student name"], undefined, { sensitivity: "base" });
-  const allStudents = [...students.values()].sort(sortByClassAndName);
+  const allStudents = [...students.values()];
   const toRow = ({ state, ...row }) => row;
   return {
     paid: allStudents.filter(({ state }) => state === "complete").map(toRow),

@@ -1,9 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { strFromU8, unzipSync } from "fflate";
-import { createTuitionExportSheets, createTuitionWorkbook } from "../src/tuition-export.mjs";
+import {
+  createTuitionExportSheets,
+  createTuitionWorkbook,
+  sortRecordsByClass,
+} from "../src/tuition-export.mjs";
 
-const classKeyForRecord = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const classKeyForRecord = (value) => String(value ?? "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, "")
+  .replace(/^nursery(?=\d)/, "nur")
+  .replace(/^sss/, "ss");
+
+test("class sorting follows the session schedule and puts unknown classes last", () => {
+  const records = [
+    { class: "SSS 2" },
+    { class: "Basic 3-4" },
+    { class: "Nursery 1" },
+    { class: "Reception" },
+    { class: "KG 2" },
+    { class: "Basic 1" },
+    { class: "JSS 1" },
+    { class: "Unknown" },
+  ];
+
+  assert.deepEqual(
+    sortRecordsByClass(records, classKeyForRecord).map(({ class: className }) => className),
+    ["Reception", "KG 2", "Nursery 1", "Basic 1", "Basic 3-4", "JSS 1", "SSS 2", "Unknown"],
+  );
+});
 
 test("export sheets group visible student records and separate complete from incomplete tuition", () => {
   const records = [

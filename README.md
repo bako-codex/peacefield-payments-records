@@ -93,6 +93,9 @@ The report automatically loads payment records in pages of 50. Firestore reads
 may incur normal charges. The From and To month filters reload records
 immediately when changed; either boundary can be used on its own, and selected
 months are inclusive. Filters and search operate on the loaded data.
+When **All classes** is selected, payment records are ordered by the 2026/27
+class schedule shown in the tuition-status panel. Selecting a specific class
+keeps that class's record order.
 
 Category fee totals use the supplied Tuition/Lesson/Social rate schedule and
 only count fees listed in an item's summary. Day Care uses the Reception
