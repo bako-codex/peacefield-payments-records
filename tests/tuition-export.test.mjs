@@ -4,6 +4,7 @@ import { strFromU8, unzipSync } from "fflate";
 import {
   createTuitionExportSheets,
   createTuitionWorkbook,
+  getTuitionPaymentAmount,
   sortRecordsByClass,
 } from "../src/tuition-export.mjs";
 
@@ -29,6 +30,27 @@ test("class sorting follows the session schedule and puts unknown classes last",
     sortRecordsByClass(records, classKeyForRecord).map(({ class: className }) => className),
     ["Reception", "KG 2", "Nursery 1", "Basic 1", "Basic 3-4", "JSS 1", "SSS 2", "Unknown"],
   );
+});
+
+test("tuition payments use the item summary and transaction total, including outstanding records", () => {
+  assert.equal(getTuitionPaymentAmount({
+    paymentType: "OUTSTANDING",
+    itemsSummary: "Tuition fee",
+    total: 20000,
+  }, 30100), 20000);
+  assert.equal(getTuitionPaymentAmount({
+    paymentType: "OUTSTANDING",
+    itemsSummary: "Tuition fee",
+    total: 50300,
+  }, 30100), 30100);
+  assert.equal(getTuitionPaymentAmount({
+    itemsSummary: "Exercise books",
+    total: 50300,
+  }, 30100), 0);
+  assert.equal(getTuitionPaymentAmount({
+    itemsSummary: "Tuition fee",
+    total: "NGN 20,000",
+  }, 30100), 20000);
 });
 
 test("export sheets group visible student records and separate complete from incomplete tuition", () => {
@@ -57,7 +79,7 @@ test("export sheets group visible student records and separate complete from inc
 test("workbook contains the two named worksheets and exported rows", async () => {
   const buffer = createTuitionWorkbook({
     paid: [{ "Student name": "Ada Okafor", Class: "Basic 1", "Parent email": "parent@example.com", Status: "Paid in full", "Tuition due (NGN)": 34450, "Tuition paid (NGN)": 34450, "Balance (NGN)": 0 }],
-    notPaid: [],
+    notPaid: [{ "Student name": "Bola Bello", Class: "JSS 1", "Parent email": "other@example.com", Status: "Partially paid", "Tuition due (NGN)": 36300, "Tuition paid (NGN)": 10000, "Balance (NGN)": 26300 }],
   });
   const files = unzipSync(buffer);
   const workbook = strFromU8(files["xl/workbook.xml"]);
@@ -69,4 +91,5 @@ test("workbook contains the two named worksheets and exported rows", async () =>
   assert.match(paidSheet, /<t xml:space="preserve">Ada Okafor<\/t>/);
   assert.match(paidSheet, /<v>34450<\/v>/);
   assert.match(notPaidSheet, /<t xml:space="preserve">Student name<\/t>/);
+  assert.match(notPaidSheet, /<c r="G2" s="3"><f>MAX\(E2-F2,0\)<\/f><v>26300<\/v><\/c>/);
 });

@@ -17,6 +17,8 @@ import { auth, isFirebaseConfigured } from "./firebase";
 import {
   createTuitionExportSheets,
   createTuitionWorkbook,
+  getCategoryFeeItems,
+  getTuitionPaymentAmount,
   sortRecordsByClass,
   tuitionStudentKey,
 } from "./tuition-export.mjs";
@@ -113,14 +115,6 @@ function isOutstanding(record) {
   return String(record.paymentType).toLocaleUpperCase() === "OUTSTANDING";
 }
 
-function getCategoryFeeItems(summary) {
-  const pattern = /(?:(\d+(?:\.\d+)?)\s*x\s+)?(tuition|lesson|social)\s+fee\b/gi;
-  return [...String(summary ?? "").matchAll(pattern)].map((match) => ({
-    category: match[2].toLocaleLowerCase(),
-    quantity: match[1] ? Number(match[1]) : 1,
-  }));
-}
-
 function recordCategoryAmounts(record) {
   const amounts = new Map();
   if (isOutstanding(record)) return amounts;
@@ -145,7 +139,10 @@ function buildTuitionStatuses(records) {
       student.state = "unavailable";
     } else {
       student.rate = rate;
-      student.paid += recordCategoryAmounts(record).get("tuition") || 0;
+      student.paid = Math.min(
+        rate,
+        student.paid + getTuitionPaymentAmount(record, rate),
+      );
       student.state = student.paid >= rate ? "complete" : student.paid > 0 ? "partial" : "unpaid";
     }
     students.set(key, student);
@@ -1030,7 +1027,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           </div>
         )}
         {tuitionExportError && <p className="tuition-export-error" role="alert">{tuitionExportError}</p>}
-        <p className="tuition-status-note">A successful payment listing “Tuition fee” counts as the full class tuition rate. Outstanding records are not counted as paid. Counts include students in the filtered records; students with no payment record cannot be shown.</p>
+        <p className="tuition-status-note">A payment counts toward tuition when its item summary lists “Tuition fee.” Its total is credited up to the class tuition price, so smaller payments count as partial. The payment type label does not determine tuition status.</p>
       </section>
 
       <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">

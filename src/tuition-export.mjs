@@ -20,6 +20,29 @@ const classGroups = [
 const classOrder = new Map(classGroups.flatMap((group, rank) =>
   group.map((classKey) => [classKey, rank])));
 
+export function getCategoryFeeItems(summary) {
+  const pattern = /(?:(\d+(?:\.\d+)?)\s*x\s+)?(tuition|lesson|social)\s+fee\b/gi;
+  return [...String(summary ?? "").matchAll(pattern)].map((match) => ({
+    category: match[2].toLocaleLowerCase(),
+    quantity: match[1] ? Number(match[1]) : 1,
+  }));
+}
+
+export function getTuitionPaymentAmount(record, tuitionRate) {
+  if (!Number.isFinite(tuitionRate) || tuitionRate <= 0) return 0;
+  const tuitionQuantity = getCategoryFeeItems(record.itemsSummary)
+    .filter(({ category }) => category === "tuition")
+    .reduce((total, item) => total + item.quantity, 0);
+  if (tuitionQuantity <= 0) return 0;
+
+  const rawAmount = record.total;
+  const amount = typeof rawAmount === "number"
+    ? rawAmount
+    : Number(String(rawAmount ?? "").replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.min(amount, tuitionRate * tuitionQuantity);
+}
+
 export function tuitionStudentKey(record, classKeyForRecord) {
   const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
   const classKey = classKeyForRecord(record.class);
@@ -121,6 +144,13 @@ function worksheetXml(rows, headerStyle) {
     const rowNumber = rowIndex + 2;
     const cells = columns.map((column, index) => {
       const style = index >= 4 ? "3" : "";
+      if (
+        column.key === "Balance (NGN)" &&
+        Number.isFinite(row["Tuition due (NGN)"]) &&
+        Number.isFinite(row["Tuition paid (NGN)"])
+      ) {
+        return `<c r="${columnName(index)}${rowNumber}" s="${style}"><f>MAX(E${rowNumber}-F${rowNumber},0)</f><v>${row[column.key]}</v></c>`;
+      }
       return cellXml(`${columnName(index)}${rowNumber}`, row[column.key], style);
     }).join("");
     return `<row r="${rowNumber}">${cells}</row>`;
@@ -156,6 +186,7 @@ export function createTuitionWorkbook({ paid, notPaid }) {
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <bookViews><workbookView/></bookViews>
 <sheets><sheet name="Paid in full" sheetId="1" r:id="rId1"/><sheet name="Not paid in full" sheetId="2" r:id="rId2"/></sheets>
+<calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/>
 </workbook>`,
     "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">

@@ -103,13 +103,14 @@ tuition rate. Outstanding payment balances are shown separately and can be
 filtered with the class selector. Student tuition badges use records in the
 selected date range, grouped by student name, class, and parent email. Search,
 class, student, item, and category filters update the status counts. A
-successful record that lists “Tuition fee” counts as the full class tuition
-rate; outstanding records are excluded. Students with no payment record at all
-are not available to the report and need a separate student roster to be
-listed. **Export Excel** downloads a workbook with separate “Paid in full” and
-“Not paid in full” sheets, including student, class, parent email, tuition paid,
-tuition due, and remaining balance. The export follows the current date range
-and active search and filters.
+record whose item summary lists “Tuition fee” contributes its transaction total
+toward that class's tuition price, capped at the price. Smaller totals count as
+partial payments, and the payment type label does not determine tuition status.
+Students with no payment record at all are not available to the report and
+need a separate student roster to be listed. **Export Excel** downloads a
+workbook with separate “Paid in full” and “Not paid in full” sheets, including
+student, class, parent email, tuition paid, tuition due, and remaining balance.
+The export follows the current date range and active search and filters.
 
 ## Deployment and security notes
 
