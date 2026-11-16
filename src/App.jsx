@@ -735,7 +735,6 @@ function PasswordLinkPanel({ user }) {
 
 function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [records, setRecords] = useState([]);
-  const [tuitionRecords, setTuitionRecords] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading payment records.");
   const [error, setError] = useState("");
@@ -814,7 +813,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           if (result.hasMore && !cursor) throw new Error("The server did not return a pagination cursor.");
           if (!cancelled) setStatus(result.hasMore ? `Loading payment records… ${loaded.length} loaded` : `${loaded.length} payment records loaded.`);
         } while (cursor);
-        if (!fromMonth && !toMonth) setTuitionRecords(loaded);
         if (!cancelled) {
           setRecords(loaded);
           setStatus(`${loaded.length} payment records loaded.`);
@@ -833,19 +831,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     return () => { cancelled = true; };
   }, [fromMonth, toMonth, user]);
 
-  const tuitionStatuses = useMemo(
-    () => tuitionRecords ? buildTuitionStatuses(tuitionRecords) : new Map(),
-    [tuitionRecords],
-  );
-  const tuitionCounts = useMemo(() => {
-    const counts = { complete: 0, incomplete: 0, unavailable: 0 };
-    tuitionStatuses.forEach(({ state }) => {
-      if (state === "complete") counts.complete += 1;
-      else if (state === "partial" || state === "unpaid") counts.incomplete += 1;
-      else counts.unavailable += 1;
-    });
-    return counts;
-  }, [tuitionStatuses]);
+  const tuitionStatuses = useMemo(() => buildTuitionStatuses(records), [records]);
 
   const classes = useMemo(() => {
     const values = new Map();
@@ -878,6 +864,21 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     if (appliedFilters.category === "outstanding") return isOutstanding(record);
     return displayValue(record.itemsSummary).toLocaleLowerCase().includes(appliedFilters.category);
   }), [matchingRecords, appliedFilters.category]);
+
+  const tuitionCounts = useMemo(() => {
+    const visibleStudents = new Map();
+    visibleRecords.forEach((record) => {
+      const key = tuitionStudentKey(record);
+      if (key) visibleStudents.set(key, tuitionStatuses.get(key)?.state || "unavailable");
+    });
+    const counts = { complete: 0, incomplete: 0, unavailable: 0 };
+    visibleStudents.forEach((state) => {
+      if (state === "complete") counts.complete += 1;
+      else if (state === "partial" || state === "unpaid") counts.incomplete += 1;
+      else counts.unavailable += 1;
+    });
+    return counts;
+  }, [visibleRecords, tuitionStatuses]);
 
   const categoryTotals = useMemo(() => {
     const totals = { all: 0, tuition: 0, lesson: 0, social: 0, outstanding: 0, outstandingCount: 0 };
@@ -975,20 +976,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       <section className="tuition-status-panel" aria-label="2026/27 tuition payment status">
         <div className="tuition-status-heading">
           <div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition status</h2></div>
-          <p>Payment status is calculated for the full session, independent of the report date filters.</p>
+          <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
         </div>
-        {tuitionRecords ? (
+        {loading ? (
+          <p className="tuition-status-message" role="status">Updating tuition status…</p>
+        ) : error && records.length === 0 ? (
+          <p className="tuition-status-message" role="status">Tuition status is unavailable because payment records could not be loaded.</p>
+        ) : (
           <div className="tuition-status-grid">
             <div className="tuition-status-total tuition-status-total-complete"><span>Paid in full</span><strong>{tuitionCounts.complete}</strong><small>students</small></div>
             <div className="tuition-status-total tuition-status-total-incomplete"><span>Not complete</span><strong>{tuitionCounts.incomplete}</strong><small>students</small></div>
             <div className="tuition-status-total tuition-status-total-unavailable"><span>Needs review</span><strong>{tuitionCounts.unavailable}</strong><small>students</small></div>
           </div>
-        ) : (
-          <p className="tuition-status-message" role="status">
-            {loading ? "Loading session payment records…" : "Tuition status is unavailable because the session records could not be loaded."}
-          </p>
         )}
-        <p className="tuition-status-note">A successful payment listing “Tuition fee” counts as the full class tuition rate. Outstanding records are not counted as paid. Only students present in the payment records can be shown.</p>
+        <p className="tuition-status-note">A successful payment listing “Tuition fee” counts as the full class tuition rate. Outstanding records are not counted as paid. Counts include students in the filtered records; students with no payment record cannot be shown.</p>
       </section>
 
       <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
@@ -1015,7 +1016,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
                     <TuitionStatusBadge
                       record={record}
                       status={tuitionStatuses.get(tuitionStudentKey(record))}
-                      isLoading={!tuitionRecords}
+                      isLoading={loading}
                     />
                   </div>
                   : displayValue(record[field])}
