@@ -2,6 +2,7 @@ const {
   getServices,
   handleApiError,
   authenticateRequest,
+  setOtpAuthenticated,
   sendJson,
 } = require("../../lib/server/firebaseAdmin");
 const { ACCESS_CODE_DURATION_MS, hashEmail, hashOtp, normalizeEmail } = require("../../lib/server/access");
@@ -15,7 +16,10 @@ module.exports = async function register(request, response) {
   }
 
   try {
-    const decoded = await authenticateRequest(request, { requireVerified: false });
+    const decoded = await authenticateRequest(request, {
+      requireVerified: false,
+      requireOtpAuthenticated: false,
+    });
     const email = normalizeEmail(decoded.email);
     const { displayName, otpCode } = request.body || {};
     const admins = (process.env.ADMIN_EMAILS || "").split(",").map(normalizeEmail).filter(Boolean);
@@ -169,6 +173,7 @@ module.exports = async function register(request, response) {
     }
 
     await getServices().auth.updateUser(decoded.uid, { emailVerified: true });
+    await setOtpAuthenticated(decoded.uid, decoded.auth_time);
     sendJson(response, 200, { ok: true });
   } catch (error) {
     handleApiError(response, error, "Could not register this account.");

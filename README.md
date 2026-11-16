@@ -1,7 +1,7 @@
 # Peacefield Payments Reports
 
 A React payment report for Peacefield Private Schools. Staff sign in with
-Firebase Authentication, verify their email, and need an approved access
+Firebase Authentication and a one-time email code, and need an approved access
 request before the server will return payment records.
 Payment data is read from Firestore by authenticated Vercel API functions using
 Firebase Admin credentials; the browser never has direct payment access.
@@ -72,13 +72,17 @@ and visible only to configured administrators in the dashboard. An admin
 approves or rejects each request; after approving, the admin separately chooses
 **Send OTP**. The access code is emailed through Brevo, is valid for 7 days,
 and can be used once to create an account or renew an existing account's access.
-After the code is accepted, account access lasts 7 days. Users with Google
-accounts must use the same email address as the approved request. Configured
-administrators can request their own verification code without a separate
-approval. No public, unrestricted account can read payment data.
+After the code is accepted, account access lasts 7 days. Normal sign-in uses a
+password or Google followed by a separate email OTP that expires in 10 minutes;
+the verified sign-in session lasts up to 12 hours or until the user signs out.
+Users with Google accounts must use the same email address as the approved
+request. Configured administrators can request their own verification code
+without a separate approval. No public, unrestricted account can read payment
+data.
 
-Configure and verify the Brevo sender address before sending codes. Firebase
-Authentication continues to send password-reset emails. For better inbox
+Configure and verify the Brevo sender address before sending codes. Sign-in and
+email verification use one-time codes, not authentication or verification
+links. Firebase Authentication continues to send password-reset emails. For better inbox
 placement, authenticate the sending domain in Brevo and publish its recommended
 SPF/DKIM DNS records; inbox placement cannot be guaranteed. Keep the Brevo API
 key server-side and never put it in a `VITE_` variable.

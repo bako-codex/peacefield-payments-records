@@ -182,6 +182,7 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [verificationUser, setVerificationUser] = useState(null);
+  const [loginOtpUser, setLoginOtpUser] = useState(null);
 
   async function requestAccess() {
     setBusy(true);
@@ -256,10 +257,11 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
           });
           await credential.user.reload();
           await credential.user.getIdToken(true);
+          await onAuthenticated(credential.user);
+          onAccessRenewed();
+        } else {
+          setLoginOtpUser(credential.user);
         }
-        await onAuthenticated(credential.user);
-        if (otpCode.trim()) onAccessRenewed();
-        else onSignedIn();
       }
     } catch (authError) {
       setError(authError.message || "Authentication failed. Please try again.");
@@ -290,11 +292,16 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
             method: "POST",
             body: JSON.stringify({ displayName, otpCode: otpCode.trim() }),
           });
+          await credential.user.reload();
+          await credential.user.getIdToken(true);
+          if (mode === "signup") onAccountCreated();
+          else onAccessRenewed();
+          await onAuthenticated(credential.user);
+        } else if (!credential.user.emailVerified) {
+          setVerificationUser(credential.user);
+        } else {
+          setLoginOtpUser(credential.user);
         }
-        if (mode === "signup") onAccountCreated();
-        await onAuthenticated(credential.user);
-        if (mode !== "signup" && otpCode.trim()) onAccessRenewed();
-        else if (mode !== "signup") onSignedIn();
       } catch (registrationError) {
         const message = getErrorMessage(registrationError, "Your Google account signed in, but staff access could not be set up.");
         try {
@@ -347,8 +354,8 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
         <div className="auth-card">
           <div className="auth-card-heading">
             <p className="eyebrow">SECURE STAFF PORTAL</p>
-            <h2>{verificationUser ? "Verify your email" : mode === "login" ? "Welcome back" : otpRequested ? "Complete account setup" : "Request staff access"}</h2>
-            <p>{verificationUser ? "An administrator must approve your access request before sending a one-time code." : mode === "login" ? "Sign in with your school account to continue." : otpRequested ? "Enter the code sent after an administrator approved your request." : "Request staff access. An administrator will review your request before sending a code."}</p>
+            <h2>{verificationUser ? "Verify your email" : loginOtpUser ? "Check your email" : mode === "login" ? "Welcome back" : otpRequested ? "Complete account setup" : "Request staff access"}</h2>
+            <p>{verificationUser ? "An administrator must approve your access request before sending a one-time code." : loginOtpUser ? "Enter the one-time code sent to your email to finish signing in." : mode === "login" ? "Sign in with your school account, then verify with an email code." : otpRequested ? "Enter the code sent after an administrator approved your request." : "Request staff access. An administrator will review your request before sending a code."}</p>
           </div>
           {error && <div className="auth-message error-message" role="alert">{error}</div>}
           {message && <div className="auth-message success-message" role="status">{message}</div>}
@@ -357,6 +364,21 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
               user={verificationUser}
               onVerified={onAuthenticated}
               onBack={() => { setVerificationUser(null); setMessage(""); setMode("login"); }}
+            />
+          ) : loginOtpUser ? (
+            <LoginOtpForm
+              user={loginOtpUser}
+              onVerified={async (verifiedUser) => {
+                await onAuthenticated(verifiedUser);
+                onSignedIn();
+              }}
+              onBack={async () => {
+                await signOut(auth);
+                setLoginOtpUser(null);
+                setOtpCode("");
+                setError("");
+                setMessage("");
+              }}
             />
           ) : (
             <>
@@ -372,9 +394,9 @@ function AuthPage({ onAuthenticated, onAuthFlowStarted, onAuthFlowFinished, onAc
                 <label htmlFor="auth-email">Work email</label>
                 <input id="auth-email" type="email" autoComplete="email" required readOnly={mode === "signup" && otpRequested} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@school.com" />
                 {(mode === "login" || otpRequested) && <>
-                  <label htmlFor="auth-otp">Email verification code</label>
+                  <label htmlFor="auth-otp">{mode === "login" ? "Approved access code (if requested)" : "Email verification code"}</label>
                   <div className="otp-input-row">
-                    <input id="auth-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required={mode === "signup"} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={mode === "login" ? "Optional access code" : "6-digit code"} />
+                    <input id="auth-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required={mode === "signup"} value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={mode === "login" ? "For a new or renewed approval" : "6-digit code"} />
                   </div>
                 </>}
                 {mode === "login" || otpRequested ? <>
@@ -955,9 +977,23 @@ export default function App() {
   }, [notification]);
 
   async function signOutUser() {
+    let clearError = null;
+    try {
+      if (auth.currentUser) {
+        await apiRequest("/api/auth/clear-login-otp", auth.currentUser, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+      }
+    } catch (error) {
+      clearError = error;
+    }
+
     try {
       await signOut(auth);
-      showNotification("Signed out successfully.");
+      showNotification(clearError
+        ? `Signed out, but the verified session could not be cleared (${getErrorMessage(clearError, "server error")}). It will expire automatically.`
+        : "Signed out successfully.", clearError ? "error" : "success");
     } catch (error) {
       showNotification(error.message || "Could not sign out. Please try again.", "error");
     }
@@ -988,6 +1024,20 @@ export default function App() {
           setAuthStatus("verification-required");
           return;
         }
+        const tokenResult = await firebaseUser.getIdTokenResult();
+        const otpAuthenticatedUntil = Number(tokenResult.claims.otpAuthenticatedUntil);
+        const otpAuthenticatedAuthTime = Number(tokenResult.claims.otpAuthenticatedAuthTime);
+        const authTime = Number(tokenResult.claims.auth_time);
+        if (
+          !Number.isInteger(otpAuthenticatedUntil) ||
+          otpAuthenticatedUntil <= Math.floor(Date.now() / 1000) ||
+          !Number.isInteger(otpAuthenticatedAuthTime) ||
+          otpAuthenticatedAuthTime !== authTime
+        ) {
+          setVerificationUser(firebaseUser);
+          setAuthStatus("otp-required");
+          return;
+        }
         await activateUser(firebaseUser);
       } catch (error) {
         setAuthError(error.message);
@@ -995,6 +1045,35 @@ export default function App() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (authStatus !== "active" || !user) return undefined;
+    let timeout;
+    user.getIdTokenResult().then((tokenResult) => {
+      const otpAuthenticatedUntil = Number(tokenResult.claims.otpAuthenticatedUntil);
+      const otpAuthenticatedAuthTime = Number(tokenResult.claims.otpAuthenticatedAuthTime);
+      const authTime = Number(tokenResult.claims.auth_time);
+      const remaining = otpAuthenticatedUntil * 1000 - Date.now();
+      if (
+        !Number.isInteger(otpAuthenticatedUntil) ||
+        remaining <= 0 ||
+        !Number.isInteger(otpAuthenticatedAuthTime) ||
+        otpAuthenticatedAuthTime !== authTime
+      ) {
+        setVerificationUser(user);
+        setAuthStatus("otp-required");
+        return;
+      }
+      timeout = window.setTimeout(() => {
+        setVerificationUser(user);
+        setAuthStatus("otp-required");
+      }, remaining);
+    }).catch((error) => {
+      setAuthError(error.message || "Could not verify the sign-in session.");
+      setAuthStatus("server-error");
+    });
+    return () => window.clearTimeout(timeout);
+  }, [authStatus, user]);
 
   if (!isFirebaseConfigured) {
     return <SetupPage />;
@@ -1020,6 +1099,9 @@ export default function App() {
   if (authStatus === "verification-required" && verificationUser) {
     return <VerificationPage user={verificationUser} onSignOut={signOutUser} onVerified={activateUser} />;
   }
+  if (authStatus === "otp-required" && verificationUser) {
+    return <LoginOtpPage user={verificationUser} onSignOut={signOutUser} onVerified={activateUser} />;
+  }
   if (authStatus === "access-denied") {
     return <AccessDeniedPage error={authError} onSignOut={signOutUser} />;
   }
@@ -1041,6 +1123,13 @@ export default function App() {
   );
 }
 
+function LoginOtpPage({ user, onSignOut, onVerified }) {
+  return <main className="auth-page single-auth-page"><section className="auth-form-panel"><div className="auth-card">
+    <Brand compact /><div className="auth-card-heading"><p className="eyebrow">SIGN-IN VERIFICATION</p><h2>Check your email</h2><p>Enter the one-time code sent to <strong>{user.email}</strong> to continue. Codes expire in 10 minutes.</p></div>
+    <LoginOtpForm user={user} onVerified={onVerified} onBack={onSignOut} />
+  </div></section></main>;
+}
+
 function AuthToast({ message, type }) {
   return (
     <div className={`auth-toast${type === "error" ? " is-error" : ""}`} role={type === "error" ? "alert" : "status"}>
@@ -1048,6 +1137,79 @@ function AuthToast({ message, type }) {
       <span>{message}</span>
     </div>
   );
+}
+
+function LoginOtpForm({ user, onVerified, onBack }) {
+  const [otpCode, setOtpCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function requestCode() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await apiRequest("/api/auth/request-login-code", user, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setMessage(result.message || "A sign-in code has been sent. It expires in 10 minutes.");
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, "Could not send a sign-in code."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    requestCode();
+  }, [user]);
+
+  async function verifyCode(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await apiRequest("/api/auth/verify-login-code", user, {
+        method: "POST",
+        body: JSON.stringify({ otpCode }),
+      });
+      await user.getIdToken(true);
+      await onVerified(user);
+    } catch (verificationError) {
+      setError(getErrorMessage(verificationError, "Could not verify the sign-in code."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function goBack() {
+    setBusy(true);
+    setError("");
+    try {
+      await onBack();
+    } catch (backError) {
+      setError(getErrorMessage(backError, "Could not return to sign in."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <>
+    {message && <div className="auth-message success-message" role="status">{message}</div>}
+    {error && <div className="auth-message error-message" role="alert">{error}</div>}
+    <form className="auth-form" onSubmit={verifyCode}>
+      <label htmlFor="login-otp">Sign-in code</label>
+      <input id="login-otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" />
+      <button className="primary-button full-width" type="submit" disabled={busy || !/^\d{6}$/.test(otpCode)}>
+        {busy ? "Verifying…" : "Verify and sign in"}
+      </button>
+    </form>
+    <button className="text-button" type="button" disabled={busy} onClick={requestCode}>Resend code</button>
+    <button className="text-button" type="button" disabled={busy} onClick={goBack}>Return to sign in</button>
+  </>;
 }
 
 function OtpVerificationForm({ user, onVerified, onBack, onSignOut }) {
