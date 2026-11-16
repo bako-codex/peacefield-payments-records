@@ -97,7 +97,12 @@ months are inclusive. Filters and search operate on the loaded data.
 Category fee totals use the supplied Tuition/Lesson/Social rate schedule and
 only count fees listed in an item's summary. Day Care uses the Reception
 tuition rate. Outstanding payment balances are shown separately and can be
-filtered with the class selector.
+filtered with the class selector. Student tuition badges use all stored payment
+records for the 2026/27 session, grouped by student name, class, and parent
+email. A successful record that lists “Tuition fee” counts as the full class
+tuition rate; outstanding records are excluded. The badges are independent of
+the report's month filters. Students with no payment record at all are not
+available to the report and need a separate student roster to be listed.
 
 ## Deployment and security notes
 

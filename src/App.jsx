@@ -42,6 +42,7 @@ const categoryRates = {
   tuition: {
     reception: 30100, kg1: 32800, kg2: 32800, nur1: 32800, nur2: 32800,
     basic1: 34450, basic2: 34450, basic3: 34450, basic4: 34450, basic5: 34450,
+    basic34: 34450,
     jss1: 36300, jss2: 36300, jss3: 46000,
     ss1: 37300, ss2: 37300, ss3: 48000,
   },
@@ -65,6 +66,7 @@ function categoryClassKey(value) {
     .toLocaleLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .replace(/^daycare$/, "reception")
+    .replace(/^nursery(?=\d)/, "nur")
     .replace(/^sss/, "ss");
 }
 
@@ -124,6 +126,33 @@ function recordCategoryAmounts(record) {
     }
   }
   return amounts;
+}
+
+function tuitionStudentKey(record) {
+  const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const classKey = categoryClassKey(record.class);
+  if (!name || !classKey) return null;
+  const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
+  return `${name}|${classKey}|${parentEmail}`;
+}
+
+function buildTuitionStatuses(records) {
+  const students = new Map();
+  records.forEach((record) => {
+    const key = tuitionStudentKey(record);
+    if (!key) return;
+    const rate = categoryRates.tuition[categoryClassKey(record.class)];
+    const student = students.get(key) || { paid: 0, rate };
+    if (rate === undefined) {
+      student.state = "unavailable";
+    } else {
+      student.rate = rate;
+      student.paid += recordCategoryAmounts(record).get("tuition") || 0;
+      student.state = student.paid >= rate ? "complete" : student.paid > 0 ? "partial" : "unpaid";
+    }
+    students.set(key, student);
+  });
+  return students;
 }
 
 function getErrorMessage(error, fallback) {
@@ -706,6 +735,7 @@ function PasswordLinkPanel({ user }) {
 
 function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [records, setRecords] = useState([]);
+  const [tuitionRecords, setTuitionRecords] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading payment records.");
   const [error, setError] = useState("");
@@ -784,6 +814,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           if (result.hasMore && !cursor) throw new Error("The server did not return a pagination cursor.");
           if (!cancelled) setStatus(result.hasMore ? `Loading payment records… ${loaded.length} loaded` : `${loaded.length} payment records loaded.`);
         } while (cursor);
+        if (!fromMonth && !toMonth) setTuitionRecords(loaded);
         if (!cancelled) {
           setRecords(loaded);
           setStatus(`${loaded.length} payment records loaded.`);
@@ -801,6 +832,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     load();
     return () => { cancelled = true; };
   }, [fromMonth, toMonth, user]);
+
+  const tuitionStatuses = useMemo(
+    () => tuitionRecords ? buildTuitionStatuses(tuitionRecords) : new Map(),
+    [tuitionRecords],
+  );
+  const tuitionCounts = useMemo(() => {
+    const counts = { complete: 0, incomplete: 0, unavailable: 0 };
+    tuitionStatuses.forEach(({ state }) => {
+      if (state === "complete") counts.complete += 1;
+      else if (state === "partial" || state === "unpaid") counts.incomplete += 1;
+      else counts.unavailable += 1;
+    });
+    return counts;
+  }, [tuitionStatuses]);
 
   const classes = useMemo(() => {
     const values = new Map();
@@ -927,6 +972,25 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
       </section>
 
+      <section className="tuition-status-panel" aria-label="2026/27 tuition payment status">
+        <div className="tuition-status-heading">
+          <div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition status</h2></div>
+          <p>Payment status is calculated for the full session, independent of the report date filters.</p>
+        </div>
+        {tuitionRecords ? (
+          <div className="tuition-status-grid">
+            <div className="tuition-status-total tuition-status-total-complete"><span>Paid in full</span><strong>{tuitionCounts.complete}</strong><small>students</small></div>
+            <div className="tuition-status-total tuition-status-total-incomplete"><span>Not complete</span><strong>{tuitionCounts.incomplete}</strong><small>students</small></div>
+            <div className="tuition-status-total tuition-status-total-unavailable"><span>Needs review</span><strong>{tuitionCounts.unavailable}</strong><small>students</small></div>
+          </div>
+        ) : (
+          <p className="tuition-status-message" role="status">
+            {loading ? "Loading session payment records…" : "Tuition status is unavailable because the session records could not be loaded."}
+          </p>
+        )}
+        <p className="tuition-status-note">A successful payment listing “Tuition fee” counts as the full class tuition rate. Outstanding records are not counted as paid. Only students present in the payment records can be shown.</p>
+      </section>
+
       <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
         <h2>Payment totals by category</h2>
         <div className="category-total-grid">
@@ -942,7 +1006,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       <section className="table-card" aria-label="Payment records">
         <div className="table-scroll"><table><thead><tr>{columns.map(([field, label]) => <th key={field} scope="col" className={field === "total" ? "numeric" : ""}>{label}</th>)}</tr></thead>
           <tbody>{visibleRecords.length ? visibleRecords.map((record, index) => <tr key={`${record.transactionId || record.paystackReference || "payment"}-${index}`}>
-            {columns.map(([field]) => <td key={field} className={`${field === "timestamp" ? "date-cell" : ""}${field === "total" ? " numeric" : ""}`}>{field === "timestamp" ? formatDate(record[field]) : displayValue(record[field])}</td>)}
+            {columns.map(([field]) => <td key={field} className={`${field === "timestamp" ? "date-cell" : ""}${field === "total" ? " numeric" : ""}`}>
+              {field === "timestamp"
+                ? formatDate(record[field])
+                : field === "studentName"
+                  ? <div className="student-name-cell">
+                    <span className="student-name-value">{displayValue(record[field])}</span>
+                    <TuitionStatusBadge
+                      record={record}
+                      status={tuitionStatuses.get(tuitionStudentKey(record))}
+                      isLoading={!tuitionRecords}
+                    />
+                  </div>
+                  : displayValue(record[field])}
+            </td>)}
           </tr>) : <tr><td colSpan={columns.length} className="empty-state">{error || (loading ? "Loading payment records…" : records.length ? "No records match your search or filters." : "No payment records found.")}</td></tr>}</tbody>
         </table></div>
         <div className="table-footer"><div className="table-status"><span id="status-message" data-state={error ? "error" : "info"} role="status">{error || status}</span></div></div>
@@ -954,6 +1031,28 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
 
 function SummaryCard({ label, value, detail }) {
   return <div className="category-total"><span className="summary-label">{label}</span><strong>{formatAmount(value)}</strong>{detail && <span className="summary-label">{detail}</span>}</div>;
+}
+
+function TuitionStatusBadge({ record, status, isLoading }) {
+  const state = isLoading ? "loading" : status?.state || "unavailable";
+  const labels = {
+    complete: "Tuition complete",
+    partial: "Tuition partial",
+    unpaid: "Tuition unpaid",
+    unavailable: "Status unavailable",
+    loading: "Checking status…",
+  };
+  const detail = status?.rate
+    ? `${formatAmount(status.paid)} / ${formatAmount(status.rate)}`
+    : "";
+  const title = status?.rate
+    ? `${labels[state]} for ${record.class}: ${detail} naira paid for 2026/27.`
+    : labels[state];
+
+  return <span className="tuition-status-cell">
+    <span className={`tuition-badge tuition-badge-${state}`} title={title}>{labels[state]}</span>
+    {detail && <small className="tuition-status-detail">₦{detail}</small>}
+  </span>;
 }
 
 export default function App() {
