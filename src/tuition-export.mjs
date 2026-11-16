@@ -1,0 +1,154 @@
+import { strToU8, zipSync } from "fflate";
+
+export function tuitionStudentKey(record, classKeyForRecord) {
+  const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const classKey = classKeyForRecord(record.class);
+  if (!name || !classKey) return null;
+  const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
+  return `${name}|${classKey}|${parentEmail}`;
+}
+
+export function createTuitionExportSheets(records, statuses, classKeyForRecord) {
+  const students = new Map();
+  records.forEach((record) => {
+    const key = tuitionStudentKey(record, classKeyForRecord);
+    if (!key || students.has(key)) return;
+    const tuition = statuses.get(key) || { state: "unavailable", paid: 0 };
+    const labels = {
+      complete: "Paid in full",
+      partial: "Partially paid",
+      unpaid: "Unpaid",
+      unavailable: "Needs review",
+    };
+    const rate = Number.isFinite(tuition.rate) ? tuition.rate : null;
+    const paid = Number.isFinite(tuition.paid) ? tuition.paid : 0;
+    students.set(key, {
+      "Student name": String(record.studentName ?? "").trim(),
+      Class: String(record.class ?? "").trim(),
+      "Parent email": String(record.parentEmail ?? "").trim(),
+      Status: labels[tuition.state] || labels.unavailable,
+      "Tuition due (NGN)": rate,
+      "Tuition paid (NGN)": paid,
+      "Balance (NGN)": rate === null ? null : Math.max(rate - paid, 0),
+      state: tuition.state,
+    });
+  });
+
+  const sortByClassAndName = (left, right) =>
+    left.Class.localeCompare(right.Class, undefined, { numeric: true, sensitivity: "base" }) ||
+    left["Student name"].localeCompare(right["Student name"], undefined, { sensitivity: "base" });
+  const allStudents = [...students.values()].sort(sortByClassAndName);
+  const toRow = ({ state, ...row }) => row;
+  return {
+    paid: allStudents.filter(({ state }) => state === "complete").map(toRow),
+    notPaid: allStudents.filter(({ state }) => state !== "complete").map(toRow),
+  };
+}
+
+const columns = [
+  { header: "Student name", key: "Student name", width: 28 },
+  { header: "Class", key: "Class", width: 16 },
+  { header: "Parent email", key: "Parent email", width: 32 },
+  { header: "Status", key: "Status", width: 20 },
+  { header: "Tuition due (NGN)", key: "Tuition due (NGN)", width: 20 },
+  { header: "Tuition paid (NGN)", key: "Tuition paid (NGN)", width: 21 },
+  { header: "Balance (NGN)", key: "Balance (NGN)", width: 18 },
+];
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function columnName(index) {
+  let name = "";
+  let value = index + 1;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    value = Math.floor((value - 1) / 26);
+  }
+  return name;
+}
+
+function cellXml(reference, value, style = "") {
+  const styleAttribute = style ? ` s="${style}"` : "";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `<c r="${reference}"${styleAttribute}><v>${value}</v></c>`;
+  }
+  if (value === null || value === undefined || value === "") {
+    return `<c r="${reference}"${styleAttribute}/>`;
+  }
+  return `<c r="${reference}"${styleAttribute} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
+}
+
+function worksheetXml(rows, headerStyle) {
+  const headerCells = columns.map((column, index) =>
+    cellXml(`${columnName(index)}1`, column.header, headerStyle)).join("");
+  const dataRows = rows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 2;
+    const cells = columns.map((column, index) => {
+      const style = index >= 4 ? "3" : "";
+      return cellXml(`${columnName(index)}${rowNumber}`, row[column.key], style);
+    }).join("");
+    return `<row r="${rowNumber}">${cells}</row>`;
+  }).join("");
+  const widths = columns.map((column, index) =>
+    `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join("");
+  const lastRow = rows.length + 1;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>
+<cols>${widths}</cols><sheetData><row r="1" ht="24" customHeight="1">${headerCells}</row>${dataRows}</sheetData>
+<autoFilter ref="A1:G${lastRow}"/>
+</worksheet>`;
+}
+
+export function createTuitionWorkbook({ paid, notPaid }) {
+  const files = {
+    "[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`,
+    "_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+    "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<bookViews><workbookView/></bookViews>
+<sheets><sheet name="Paid in full" sheetId="1" r:id="rId1"/><sheet name="Not paid in full" sheetId="2" r:id="rId2"/></sheets>
+</workbook>`,
+    "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`,
+    "xl/styles.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;NGN&quot; #,##0.00"/></numFmts>
+<fonts count="2"><font><name val="Calibri"/><sz val="11"/></font><font><name val="Calibri"/><b/><color rgb="FFFFFFFF"/><sz val="11"/></font></fonts>
+<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF2E7D4A"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFB36B00"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`,
+    "xl/worksheets/sheet1.xml": worksheetXml(paid, "1"),
+    "xl/worksheets/sheet2.xml": worksheetXml(notPaid, "2"),
+  };
+  return zipSync(Object.fromEntries(
+    Object.entries(files).map(([path, content]) => [path, strToU8(content)]),
+  ));
+}

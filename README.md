@@ -103,7 +103,10 @@ class, student, item, and category filters update the status counts. A
 successful record that lists “Tuition fee” counts as the full class tuition
 rate; outstanding records are excluded. Students with no payment record at all
 are not available to the report and need a separate student roster to be
-listed.
+listed. **Export Excel** downloads a workbook with separate “Paid in full” and
+“Not paid in full” sheets, including student, class, parent email, tuition paid,
+tuition due, and remaining balance. The export follows the current date range
+and active search and filters.
 
 ## Deployment and security notes
 

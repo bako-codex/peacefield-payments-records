@@ -599,6 +599,53 @@ h1 {
   text-align: right;
 }
 
+.tuition-status-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.export-excel-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid #246b3d;
+  border-radius: 999px;
+  background: #edf7f0;
+  color: #246b3d;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+
+.export-excel-button:hover:not(:disabled) {
+  background: #246b3d;
+  color: #fff;
+}
+
+.export-excel-button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+.export-excel-button:focus-visible {
+  outline: 3px solid rgba(36, 107, 61, 0.24);
+  outline-offset: 2px;
+}
+
+.tuition-export-error {
+  margin: 12px 0 0;
+  color: #943c34;
+  font-size: 0.82rem;
+}
+
 .tuition-status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1958,6 +2005,11 @@ td:nth-child(9) {
 
   .tuition-status-heading > p {
     text-align: left;
+  }
+
+  .tuition-status-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .tuition-status-grid {

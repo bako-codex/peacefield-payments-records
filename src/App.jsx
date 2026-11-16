@@ -14,9 +14,14 @@ import {
   updateProfile,
 } from "@firebase/auth";
 import { auth, isFirebaseConfigured } from "./firebase";
+import {
+  createTuitionExportSheets,
+  createTuitionWorkbook,
+  tuitionStudentKey,
+} from "./tuition-export.mjs";
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
-import { FaSignOutAlt } from "react-icons/fa";
+import { FaFileExcel, FaSignOutAlt } from "react-icons/fa";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 
 const columns = [
@@ -128,18 +133,10 @@ function recordCategoryAmounts(record) {
   return amounts;
 }
 
-function tuitionStudentKey(record) {
-  const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
-  const classKey = categoryClassKey(record.class);
-  if (!name || !classKey) return null;
-  const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
-  return `${name}|${classKey}|${parentEmail}`;
-}
-
 function buildTuitionStatuses(records) {
   const students = new Map();
   records.forEach((record) => {
-    const key = tuitionStudentKey(record);
+    const key = tuitionStudentKey(record, categoryClassKey);
     if (!key) return;
     const rate = categoryRates.tuition[categoryClassKey(record.class)];
     const student = students.get(key) || { paid: 0, rate };
@@ -735,6 +732,8 @@ function PasswordLinkPanel({ user }) {
 
 function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [records, setRecords] = useState([]);
+  const [exportingTuition, setExportingTuition] = useState(false);
+  const [tuitionExportError, setTuitionExportError] = useState("");
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("Loading payment records.");
   const [error, setError] = useState("");
@@ -868,7 +867,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const tuitionCounts = useMemo(() => {
     const visibleStudents = new Map();
     visibleRecords.forEach((record) => {
-      const key = tuitionStudentKey(record);
+      const key = tuitionStudentKey(record, categoryClassKey);
       if (key) visibleStudents.set(key, tuitionStatuses.get(key)?.state || "unavailable");
     });
     const counts = { complete: 0, incomplete: 0, unavailable: 0 };
@@ -915,6 +914,35 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     setItemSummary("");
     setCategory("");
     setAppliedFilters({ class: "", studentName: "", itemSummary: "", category: "" });
+  }
+
+  async function exportTuitionWorkbook() {
+    setExportingTuition(true);
+    setTuitionExportError("");
+    try {
+      const sheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey);
+      if (sheets.paid.length + sheets.notPaid.length === 0) {
+        throw new Error("No students in the current results can be exported.");
+      }
+      const workbook = await createTuitionWorkbook(sheets);
+      const blob = new Blob([workbook], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const start = fromMonth || "all";
+      const end = toMonth || "all";
+      link.href = url;
+      link.download = `peacefield-tuition-status-${start}-to-${end}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (exportError) {
+      setTuitionExportError(getErrorMessage(exportError, "Could not create the tuition Excel workbook."));
+    } finally {
+      setExportingTuition(false);
+    }
   }
 
   const activeFilterCount = Object.values(appliedFilters).filter(Boolean).length;
@@ -976,7 +1004,13 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       <section className="tuition-status-panel" aria-label="2026/27 tuition payment status">
         <div className="tuition-status-heading">
           <div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition status</h2></div>
-          <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
+          <div className="tuition-status-actions">
+            <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
+            <button className="export-excel-button" type="button" onClick={exportTuitionWorkbook} disabled={loading || exportingTuition || visibleRecords.length === 0}>
+              <FaFileExcel aria-hidden="true" />
+              {exportingTuition ? "Preparing workbook…" : "Export Excel"}
+            </button>
+          </div>
         </div>
         {loading ? (
           <p className="tuition-status-message" role="status">Updating tuition status…</p>
@@ -989,6 +1023,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
             <div className="tuition-status-total tuition-status-total-unavailable"><span>Needs review</span><strong>{tuitionCounts.unavailable}</strong><small>students</small></div>
           </div>
         )}
+        {tuitionExportError && <p className="tuition-export-error" role="alert">{tuitionExportError}</p>}
         <p className="tuition-status-note">A successful payment listing “Tuition fee” counts as the full class tuition rate. Outstanding records are not counted as paid. Counts include students in the filtered records; students with no payment record cannot be shown.</p>
       </section>
 
@@ -1015,7 +1050,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
                     <span className="student-name-value">{displayValue(record[field])}</span>
                     <TuitionStatusBadge
                       record={record}
-                      status={tuitionStatuses.get(tuitionStudentKey(record))}
+                      status={tuitionStatuses.get(tuitionStudentKey(record, categoryClassKey))}
                       isLoading={loading}
                     />
                   </div>
