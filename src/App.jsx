@@ -52,7 +52,7 @@ const categoryRates = {
     basic1: 34450, basic2: 34450, basic3: 34450, basic4: 34450, basic5: 34450,
     basic34: 34450,
     jss1: 36300, jss2: 36300, jss3: 46000,
-    ss1: 37300, ss2: 37300, ss3: 48000,
+    ss1: 37300, ss2: 37300, ss3: 40500,
   },
   lesson: {
     kg1: 5000, kg2: 5000, nur1: 5000, nur2: 5000,
