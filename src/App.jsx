@@ -27,8 +27,10 @@ import { TbPasswordUser } from "react-icons/tb";
 import { FaArrowDown, FaArrowUp, FaFileExcel, FaSignOutAlt } from "react-icons/fa";
 import { FaBook, FaCreditCard } from "react-icons/fa6";
 import { HiOutlineViewGrid } from "react-icons/hi";
-import { FiSettings } from "react-icons/fi";
+import { FiSearch, FiSettings } from "react-icons/fi";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
+import { RiAccountCircleFill } from "react-icons/ri";
+import { TbHistory } from "react-icons/tb";
 
 const dashboardTabs = [
   { id: "overview", label: "Overview", icon: HiOutlineViewGrid },
@@ -1030,17 +1032,17 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("tuition")}>
             <span className="dashboard-overview-icon"><FaBook aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Tuition status</strong><small>{tuitionCounts.complete} paid in full · {tuitionCounts.incomplete} not complete</small></span>
-            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+            <span className="dashboard-overview-action-icon"><TbHistory aria-hidden="true" /></span>
           </button>
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("payments")}>
             <span className="dashboard-overview-icon"><FaCreditCard aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Find a payment</strong><small>Search records and filter by class or date</small></span>
-            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+            <span className="dashboard-overview-action-icon"><FiSearch aria-hidden="true" /></span>
           </button>
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("account")}>
             <span className="dashboard-overview-icon"><FiSettings aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Account tools</strong><small>Access requests and sign-in settings</small></span>
-            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+            <span className="dashboard-overview-action-icon"><RiAccountCircleFill aria-hidden="true" /></span>
           </button>
         </div>
       </section>}

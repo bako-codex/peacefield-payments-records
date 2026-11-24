@@ -221,10 +221,17 @@ input {
   line-height: 1.4;
 }
 
-.dashboard-overview-arrow {
+.dashboard-overview-action-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
   margin-left: auto;
   color: var(--brand-magenta-dark);
-  font-size: 1.15rem;
+}
+
+.dashboard-overview-action-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
 .dashboard-section-heading {
