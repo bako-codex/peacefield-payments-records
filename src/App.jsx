@@ -25,13 +25,16 @@ import {
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
 import { FaArrowDown, FaArrowUp, FaFileExcel, FaSignOutAlt } from "react-icons/fa";
-import { FiBookOpen, FiCreditCard, FiGrid, FiSettings } from "react-icons/fi";
+import { FaCreditCard } from "react-icons/fa6";
+import { ImBook } from "react-icons/im";
+import { HiOutlineViewGrid } from "react-icons/hi";
+import { FiSettings } from "react-icons/fi";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 
 const dashboardTabs = [
-  { id: "overview", label: "Overview", icon: FiGrid },
-  { id: "tuition", label: "Tuition", icon: FiBookOpen },
-  { id: "payments", label: "Payments", icon: FiCreditCard },
+  { id: "overview", label: "Overview", icon: HiOutlineViewGrid },
+  { id: "tuition", label: "Tuition", icon: ImBook },
+  { id: "payments", label: "Payments", icon: FaCreditCard },
   { id: "account", label: "Account", icon: FiSettings },
 ];
 
@@ -1024,12 +1027,12 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </section>
         <div className="dashboard-overview-grid">
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("tuition")}>
-            <span className="dashboard-overview-icon"><FiBookOpen aria-hidden="true" /></span>
+            <span className="dashboard-overview-icon"><ImBook aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Tuition status</strong><small>{tuitionCounts.complete} paid in full · {tuitionCounts.incomplete} not complete</small></span>
             <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
           </button>
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("payments")}>
-            <span className="dashboard-overview-icon"><FiCreditCard aria-hidden="true" /></span>
+            <span className="dashboard-overview-icon"><FaCreditCard aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Find a payment</strong><small>Search records and filter by class or date</small></span>
             <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
           </button>
