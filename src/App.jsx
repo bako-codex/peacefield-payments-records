@@ -24,7 +24,7 @@ import {
 } from "./tuition-export.mjs";
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
-import { FaFileExcel, FaSignOutAlt } from "react-icons/fa";
+import { FaArrowDown, FaArrowUp, FaFileExcel, FaSignOutAlt } from "react-icons/fa";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 
 const columns = [
@@ -951,7 +951,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const activeFilterCount = Object.values(appliedFilters).filter(Boolean).length;
 
   return (
-    <main className="page-shell">
+    <main className="page-shell" id="page-top">
       <header className="page-header">
         <Brand />
         <div className="header-report-mark" aria-label="Payments collection, read-only report">
@@ -1063,7 +1063,17 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </table></div>
         <div className="table-footer"><div className="table-status"><span id="status-message" data-state={error ? "error" : "info"} role="status">{error || status}</span></div></div>
       </section>
-      <footer className="page-footer"><span>Read-only · Data is loaded directly from Firestore</span><span>Search and filters apply to all loaded records</span></footer>
+      <footer className="page-footer" id="page-bottom"><span>Read-only · Data is loaded directly from Firestore</span><span>Search and filters apply to all loaded records</span></footer>
+      <nav className="page-scroll-controls" aria-label="Page navigation">
+        <button type="button" aria-label="Go to top" title="Go to top" onClick={() => window.scrollTo(0, 0)}>
+          <FaArrowUp aria-hidden="true" />
+          <span>Top</span>
+        </button>
+        <button type="button" aria-label="Go to bottom" title="Go to bottom" onClick={() => window.scrollTo(0, document.documentElement.scrollHeight)}>
+          <FaArrowDown aria-hidden="true" />
+          <span>Bottom</span>
+        </button>
+      </nav>
     </main>
   );
 }

@@ -1924,6 +1924,46 @@ td:nth-child(9) {
   font-size: 0.75rem;
 }
 
+.page-scroll-controls {
+  position: fixed;
+  z-index: 20;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 8px;
+}
+
+.page-scroll-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 92px;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand-magenta-dark);
+  box-shadow: 0 5px 18px rgba(48, 23, 36, 0.14);
+  font-size: 0.8rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.page-scroll-controls button:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-magenta);
+  background: var(--brand-magenta);
+  color: #fff;
+}
+
+.page-scroll-controls button:focus-visible {
+  outline: 3px solid rgba(230, 0, 93, 0.25);
+  outline-offset: 3px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1938,6 +1978,27 @@ td:nth-child(9) {
   .page-shell {
     width: min(100% - 28px, 1500px);
     padding-top: 30px;
+  }
+
+  .page-scroll-controls {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .page-scroll-controls button {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 0;
+  }
+
+  .page-scroll-controls button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
   }
 
   .page-header {
