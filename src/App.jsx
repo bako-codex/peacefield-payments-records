@@ -25,7 +25,15 @@ import {
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
 import { FaArrowDown, FaArrowUp, FaFileExcel, FaSignOutAlt } from "react-icons/fa";
+import { FiBookOpen, FiCreditCard, FiGrid, FiSettings } from "react-icons/fi";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
+
+const dashboardTabs = [
+  { id: "overview", label: "Overview", icon: FiGrid },
+  { id: "tuition", label: "Tuition", icon: FiBookOpen },
+  { id: "payments", label: "Payments", icon: FiCreditCard },
+  { id: "account", label: "Account", icon: FiSettings },
+];
 
 const columns = [
   ["timestamp", "Payment date"],
@@ -729,6 +737,7 @@ function PasswordLinkPanel({ user }) {
 }
 
 function Dashboard({ user, onSignOut, onAccessExpired }) {
+  const [activeTab, setActiveTab] = useState("overview");
   const [records, setRecords] = useState([]);
   const [exportingTuition, setExportingTuition] = useState(false);
   const [tuitionExportError, setTuitionExportError] = useState("");
@@ -950,6 +959,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
 
   const activeFilterCount = Object.values(appliedFilters).filter(Boolean).length;
 
+  function handleTabKeyDown(event, currentIndex) {
+    let nextIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % dashboardTabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + dashboardTabs.length) % dashboardTabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = dashboardTabs.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextTab = dashboardTabs[nextIndex];
+    setActiveTab(nextTab.id);
+    document.getElementById(`dashboard-tab-${nextTab.id}`)?.focus();
+  }
+
   return (
     <main className="page-shell" id="page-top">
       <header className="page-header">
@@ -969,20 +992,66 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </div>
       </header>
 
-      <nav className="dashboard-nav" aria-label="Dashboard sections">
-        <span className="dashboard-nav-label">Jump to</span>
-        <a href="#account-tools">Account tools</a>
-        <a href="#report-filters">Filters &amp; search</a>
-        <a href="#tuition-overview">Tuition overview</a>
-        <a href="#payment-records">Payment records</a>
-      </nav>
-
-      <div className="account-panels" id="account-tools">
-        <AccessRequestsPanel user={user} />
-        <PasswordLinkPanel user={user} />
+      <div className="dashboard-tabs" role="tablist" aria-label="Main dashboard navigation">
+        {dashboardTabs.map(({ id, label, icon: Icon }, index) => (
+          <button
+            key={id}
+            id={`dashboard-tab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === id}
+            aria-controls="dashboard-panel"
+            tabIndex={activeTab === id ? 0 : -1}
+            onClick={() => setActiveTab(id)}
+            onKeyDown={(event) => handleTabKeyDown(event, index)}
+          >
+            <Icon aria-hidden="true" />
+            <span>{label}</span>
+            {id === "payments" && <span className="dashboard-tab-count">{visibleRecords.length}</span>}
+          </button>
+        ))}
       </div>
 
-      <div className="report-controls" id="report-filters">
+      {activeTab === "overview" && <section className="dashboard-tab-panel" id="dashboard-panel" role="tabpanel" aria-labelledby={`dashboard-tab-${activeTab}`} tabIndex={0}>
+        <div className="dashboard-welcome">
+          <span className="eyebrow">PEACEFIELD · STAFF PORTAL</span>
+          <h2>Welcome to your dashboard</h2>
+          <p>Choose a section to review tuition, find a payment, or manage account access.</p>
+        </div>
+        <section className="results-summary" aria-label="Summary of matching payment records" aria-live="polite">
+          <div><span className="summary-label">Matching payments</span><strong>{new Intl.NumberFormat().format(visibleRecords.length)}</strong></div>
+          <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
+        </section>
+        <div className="dashboard-overview-grid">
+          <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("tuition")}>
+            <span className="dashboard-overview-icon"><FiBookOpen aria-hidden="true" /></span>
+            <span className="dashboard-overview-copy"><strong>Tuition status</strong><small>{tuitionCounts.complete} paid in full · {tuitionCounts.incomplete} not complete</small></span>
+            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+          </button>
+          <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("payments")}>
+            <span className="dashboard-overview-icon"><FiCreditCard aria-hidden="true" /></span>
+            <span className="dashboard-overview-copy"><strong>Find a payment</strong><small>Search records and filter by class or date</small></span>
+            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+          </button>
+          <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("account")}>
+            <span className="dashboard-overview-icon"><FiSettings aria-hidden="true" /></span>
+            <span className="dashboard-overview-copy"><strong>Account tools</strong><small>Access requests and sign-in settings</small></span>
+            <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </section>}
+
+      {activeTab === "account" && <section className="dashboard-tab-panel" id="dashboard-panel" role="tabpanel" aria-labelledby={`dashboard-tab-${activeTab}`} tabIndex={0}>
+        <div className="dashboard-section-heading"><div><span className="eyebrow">YOUR WORKSPACE</span><h2>Account tools</h2></div><p>Manage staff access requests and sign-in options.</p></div>
+        <div className="account-panels">
+          <AccessRequestsPanel user={user} />
+          <PasswordLinkPanel user={user} />
+        </div>
+      </section>}
+
+      {activeTab === "payments" && <section className="dashboard-tab-panel" id="dashboard-panel" role="tabpanel" aria-labelledby={`dashboard-tab-${activeTab}`} tabIndex={0}>
+      <div className="dashboard-section-heading"><div><span className="eyebrow">PAYMENT RECORDS</span><h2>Find a payment</h2></div><p>Search transactions or narrow results by date, class, student, and fee.</p></div>
+      <div className="report-controls">
         <MonthPicker id="from-month" label="From" value={fromMonth} max={toMonth} onChange={setFromMonth} />
         <MonthPicker id="to-month" label="To" value={toMonth} min={fromMonth} onChange={setToMonth} />
         <button className="clear-filter" type="button" onClick={() => { setFromMonth(""); setToMonth(""); }}>Clear dates</button>
@@ -1010,32 +1079,6 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       <section className="results-summary" aria-label="Summary of matching payment records" aria-live="polite">
         <div><span className="summary-label">Matching payments</span><strong>{new Intl.NumberFormat().format(visibleRecords.length)}</strong></div>
         <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
-      </section>
-
-      <section className="tuition-status-panel" id="tuition-overview" aria-label="2026/27 tuition payment status">
-        <div className="tuition-status-heading">
-          <div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition status</h2></div>
-          <div className="tuition-status-actions">
-            <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
-            <button className="export-excel-button" type="button" onClick={exportTuitionWorkbook} disabled={loading || exportingTuition || visibleRecords.length === 0}>
-              <FaFileExcel aria-hidden="true" />
-              {exportingTuition ? "Preparing workbook…" : "Export Excel"}
-            </button>
-          </div>
-        </div>
-        {loading ? (
-          <p className="tuition-status-message" role="status">Updating tuition status…</p>
-        ) : error && records.length === 0 ? (
-          <p className="tuition-status-message" role="status">Tuition status is unavailable because payment records could not be loaded.</p>
-        ) : (
-          <div className="tuition-status-grid">
-            <div className="tuition-status-total tuition-status-total-complete"><span>Paid in full</span><strong>{tuitionCounts.complete}</strong><small>students</small></div>
-            <div className="tuition-status-total tuition-status-total-incomplete"><span>Not complete</span><strong>{tuitionCounts.incomplete}</strong><small>students</small></div>
-            <div className="tuition-status-total tuition-status-total-unavailable"><span>Needs review</span><strong>{tuitionCounts.unavailable}</strong><small>students</small></div>
-          </div>
-        )}
-        {tuitionExportError && <p className="tuition-export-error" role="alert">{tuitionExportError}</p>}
-        <p className="tuition-status-note">A payment counts toward tuition when its item summary lists “Tuition fee.” Its total is credited up to the class tuition price, so smaller payments count as partial. The payment type label does not determine tuition status.</p>
       </section>
 
       <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
@@ -1071,6 +1114,47 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </table></div>
         <div className="table-footer"><div className="table-status"><span id="status-message" data-state={error ? "error" : "info"} role="status">{error || status}</span></div></div>
       </section>
+      </section>}
+
+      {activeTab === "tuition" && <section className="dashboard-tab-panel" id="dashboard-panel" role="tabpanel" aria-labelledby={`dashboard-tab-${activeTab}`} tabIndex={0}>
+        <div className="dashboard-section-heading"><div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition overview</h2></div><p>Review tuition progress and export a filtered student list.</p></div>
+        <section className="tuition-status-panel" aria-label="2026/27 tuition payment status">
+          <div className="tuition-status-heading">
+            <div><span className="eyebrow">SESSION SUMMARY</span><h2>Tuition status</h2></div>
+            <div className="tuition-status-actions">
+              <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
+              <button className="export-excel-button" type="button" onClick={exportTuitionWorkbook} disabled={loading || exportingTuition || visibleRecords.length === 0}>
+                <FaFileExcel aria-hidden="true" />
+                {exportingTuition ? "Preparing workbook…" : "Export Excel"}
+              </button>
+            </div>
+          </div>
+          {loading ? (
+            <p className="tuition-status-message" role="status">Updating tuition status…</p>
+          ) : error && records.length === 0 ? (
+            <p className="tuition-status-message" role="status">Tuition status is unavailable because payment records could not be loaded.</p>
+          ) : (
+            <div className="tuition-status-grid">
+              <div className="tuition-status-total tuition-status-total-complete"><span>Paid in full</span><strong>{tuitionCounts.complete}</strong><small>students</small></div>
+              <div className="tuition-status-total tuition-status-total-incomplete"><span>Not complete</span><strong>{tuitionCounts.incomplete}</strong><small>students</small></div>
+              <div className="tuition-status-total tuition-status-total-unavailable"><span>Needs review</span><strong>{tuitionCounts.unavailable}</strong><small>students</small></div>
+            </div>
+          )}
+          {tuitionExportError && <p className="tuition-export-error" role="alert">{tuitionExportError}</p>}
+          <p className="tuition-status-note">A payment counts toward tuition when its item summary lists “Tuition fee.” Its total is credited up to the class tuition price, so smaller payments count as partial. The payment type label does not determine tuition status.</p>
+        </section>
+        <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
+          <h2>Payment totals by category</h2>
+          <div className="category-total-grid">
+            <SummaryCard label="Tuition payments" value={categoryTotals.tuition} />
+            <SummaryCard label="Lesson payments" value={categoryTotals.lesson} />
+            <SummaryCard label="Social payments" value={categoryTotals.social} />
+            <SummaryCard label="Outstanding balance" value={categoryTotals.outstanding} detail={`${categoryTotals.outstandingCount} payments`} />
+          </div>
+          <p>Fee totals use the supplied class fee schedule and only count fees listed in the item summary. Day Care uses the Reception rate. Outstanding balances are shown separately.</p>
+        </section>
+      </section>}
+
       <footer className="page-footer" id="page-bottom"><span>Read-only · Data is loaded directly from Firestore</span><span>Search and filters apply to all loaded records</span></footer>
       <nav className="page-scroll-controls" aria-label="Page navigation">
         <button type="button" aria-label="Go to top" title="Go to top" onClick={() => window.scrollTo(0, 0)}>
