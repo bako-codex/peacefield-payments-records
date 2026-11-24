@@ -19,14 +19,16 @@ module.exports = async function getMyAccess(request, response) {
       .split(",")
       .map((email) => email.trim().toLocaleLowerCase())
       .filter(Boolean);
-    if (decoded.email && admins.includes(decoded.email.trim().toLocaleLowerCase())) {
-      sendJson(response, 200, { expiresAt: null });
+    const isAdmin = Boolean(decoded.email && admins.includes(decoded.email.trim().toLocaleLowerCase()));
+    if (isAdmin) {
+      sendJson(response, 200, { expiresAt: null, isAdmin });
       return;
     }
 
     const expiry = profile.get("accessExpiresAt");
     sendJson(response, 200, {
       expiresAt: expiry?.toDate().toISOString() || null,
+      isAdmin,
     });
   } catch (error) {
     handleApiError(response, error, "Could not check this account's access.");

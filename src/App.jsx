@@ -757,6 +757,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [appliedFilters, setAppliedFilters] = useState({ class: "", studentName: "", itemSummary: "", category: "" });
   const [accessError, setAccessError] = useState("");
   const [accessExpiresAt, setAccessExpiresAt] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [clock, setClock] = useState(Date.now());
   const expiryHandled = useRef(false);
   const onAccessExpiredRef = useRef(onAccessExpired);
@@ -766,8 +767,9 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     let active = true;
     apiRequest("/api/auth/my-access", user)
       .then((result) => {
-        if (active && typeof result.expiresAt === "string") {
-          setAccessExpiresAt(result.expiresAt);
+        if (active) {
+          setIsAdmin(result.isAdmin === true);
+          if (typeof result.expiresAt === "string") setAccessExpiresAt(result.expiresAt);
         }
       })
       .catch((lookupError) => {
@@ -1022,7 +1024,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </div>
         <section className="results-summary" aria-label="Summary of matching payment records" aria-live="polite">
           <div><span className="summary-label">Matching payments</span><strong>{new Intl.NumberFormat().format(visibleRecords.length)}</strong></div>
-          <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
+          {isAdmin && <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>}
         </section>
         <div className="dashboard-overview-grid">
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("tuition")}>
@@ -1080,10 +1082,10 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
 
       <section className="results-summary" aria-label="Summary of matching payment records" aria-live="polite">
         <div><span className="summary-label">Matching payments</span><strong>{new Intl.NumberFormat().format(visibleRecords.length)}</strong></div>
-        <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
+        {isAdmin && <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>}
       </section>
 
-      <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
+      {isAdmin && <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
         <h2>Payment totals by category</h2>
         <div className="category-total-grid">
           <SummaryCard label="All matching" value={categoryTotals.all} />
@@ -1093,7 +1095,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           <SummaryCard label="Outstanding balance" value={categoryTotals.outstanding} detail={`${categoryTotals.outstandingCount} payments`} />
         </div>
         <p>Fee totals use the supplied class fee schedule and only count fees listed in the item summary. Day Care uses the Reception rate. Outstanding balances are shown separately.</p>
-      </section>
+      </section>}
 
       <section className="table-card" id="payment-records" aria-label="Payment records">
         <div className="table-scroll"><table><thead><tr>{columns.map(([field, label]) => <th key={field} scope="col" className={field === "total" ? "numeric" : ""}>{label}</th>)}</tr></thead>
@@ -1145,7 +1147,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
           {tuitionExportError && <p className="tuition-export-error" role="alert">{tuitionExportError}</p>}
           <p className="tuition-status-note">A payment counts toward tuition when its item summary lists “Tuition fee.” Its total is credited up to the class tuition price, so smaller payments count as partial. The payment type label does not determine tuition status.</p>
         </section>
-        <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
+        {isAdmin && <section className="category-totals" aria-label="Payment totals by category" aria-live="polite">
           <h2>Payment totals by category</h2>
           <div className="category-total-grid">
             <SummaryCard label="Tuition payments" value={categoryTotals.tuition} />
@@ -1154,7 +1156,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
             <SummaryCard label="Outstanding balance" value={categoryTotals.outstanding} detail={`${categoryTotals.outstandingCount} payments`} />
           </div>
           <p>Fee totals use the supplied class fee schedule and only count fees listed in the item summary. Day Care uses the Reception rate. Outstanding balances are shown separately.</p>
-        </section>
+        </section>}
       </section>}
 
       <footer className="page-footer" id="page-bottom"><span>Read-only · Data is loaded directly from Firestore</span><span>Search and filters apply to all loaded records</span></footer>
