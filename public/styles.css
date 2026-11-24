@@ -49,6 +49,68 @@ input {
   box-shadow: 0 8px 26px rgba(48, 23, 36, 0.055);
 }
 
+.dashboard-nav {
+  position: sticky;
+  top: 10px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
+  margin: -10px 0 18px;
+  padding: 7px;
+  overflow-x: auto;
+  border: 1px solid rgba(234, 221, 227, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(48, 23, 36, 0.09);
+  backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+}
+
+.dashboard-nav-label {
+  flex: 0 0 auto;
+  padding: 0 10px;
+  color: var(--brand-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dashboard-nav a {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--brand-ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.dashboard-nav a:hover,
+.dashboard-nav a:focus-visible {
+  border-color: #f0c3d3;
+  background: var(--brand-magenta-soft);
+  color: var(--brand-magenta-dark);
+}
+
+.dashboard-nav a:focus-visible {
+  outline: 2px solid var(--brand-magenta);
+  outline-offset: 2px;
+}
+
+#account-tools,
+#report-filters,
+#tuition-overview,
+#payment-records {
+  scroll-margin-top: 88px;
+}
+
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -2007,6 +2069,21 @@ td:nth-child(9) {
     gap: 14px;
     margin-bottom: 24px;
     padding: 18px;
+  }
+
+  .dashboard-nav {
+    top: 6px;
+    width: 100%;
+    margin: -8px 0 16px;
+    border-radius: 18px;
+  }
+
+  .dashboard-nav-label {
+    padding-left: 7px;
+  }
+
+  .dashboard-nav a {
+    padding: 8px 11px;
   }
 
   .brand-lockup {

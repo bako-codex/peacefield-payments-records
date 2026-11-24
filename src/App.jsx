@@ -969,12 +969,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </div>
       </header>
 
-      <div className="account-panels">
+      <nav className="dashboard-nav" aria-label="Dashboard sections">
+        <span className="dashboard-nav-label">Jump to</span>
+        <a href="#account-tools">Account tools</a>
+        <a href="#report-filters">Filters &amp; search</a>
+        <a href="#tuition-overview">Tuition overview</a>
+        <a href="#payment-records">Payment records</a>
+      </nav>
+
+      <div className="account-panels" id="account-tools">
         <AccessRequestsPanel user={user} />
         <PasswordLinkPanel user={user} />
       </div>
 
-      <div className="report-controls">
+      <div className="report-controls" id="report-filters">
         <MonthPicker id="from-month" label="From" value={fromMonth} max={toMonth} onChange={setFromMonth} />
         <MonthPicker id="to-month" label="To" value={toMonth} min={fromMonth} onChange={setToMonth} />
         <button className="clear-filter" type="button" onClick={() => { setFromMonth(""); setToMonth(""); }}>Clear dates</button>
@@ -1004,7 +1012,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         <div><span className="summary-label">Total amount</span><strong>{formatAmount(visibleRecords.reduce((sum, record) => sum + (Number(record.total) || 0), 0))}</strong></div>
       </section>
 
-      <section className="tuition-status-panel" aria-label="2026/27 tuition payment status">
+      <section className="tuition-status-panel" id="tuition-overview" aria-label="2026/27 tuition payment status">
         <div className="tuition-status-heading">
           <div><span className="eyebrow">2026/27 SESSION</span><h2>Tuition status</h2></div>
           <div className="tuition-status-actions">
@@ -1042,7 +1050,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         <p>Fee totals use the supplied class fee schedule and only count fees listed in the item summary. Day Care uses the Reception rate. Outstanding balances are shown separately.</p>
       </section>
 
-      <section className="table-card" aria-label="Payment records">
+      <section className="table-card" id="payment-records" aria-label="Payment records">
         <div className="table-scroll"><table><thead><tr>{columns.map(([field, label]) => <th key={field} scope="col" className={field === "total" ? "numeric" : ""}>{label}</th>)}</tr></thead>
           <tbody>{visibleRecords.length ? visibleRecords.map((record, index) => <tr key={`${record.transactionId || record.paystackReference || "payment"}-${index}`}>
             {columns.map(([field]) => <td key={field} className={`${field === "timestamp" ? "date-cell" : ""}${field === "total" ? " numeric" : ""}`}>
