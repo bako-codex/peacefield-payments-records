@@ -25,15 +25,14 @@ import {
 import { BsPersonFillAdd } from "react-icons/bs";
 import { TbPasswordUser } from "react-icons/tb";
 import { FaArrowDown, FaArrowUp, FaFileExcel, FaSignOutAlt } from "react-icons/fa";
-import { FaCreditCard } from "react-icons/fa6";
-import { ImBook } from "react-icons/im";
+import { FaBook, FaCreditCard } from "react-icons/fa6";
 import { HiOutlineViewGrid } from "react-icons/hi";
 import { FiSettings } from "react-icons/fi";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 
 const dashboardTabs = [
   { id: "overview", label: "Overview", icon: HiOutlineViewGrid },
-  { id: "tuition", label: "Tuition", icon: ImBook },
+  { id: "tuition", label: "Tuition", icon: FaBook },
   { id: "payments", label: "Payments", icon: FaCreditCard },
   { id: "account", label: "Account", icon: FiSettings },
 ];
@@ -1027,7 +1026,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         </section>
         <div className="dashboard-overview-grid">
           <button className="dashboard-overview-card" type="button" onClick={() => setActiveTab("tuition")}>
-            <span className="dashboard-overview-icon"><ImBook aria-hidden="true" /></span>
+            <span className="dashboard-overview-icon"><FaBook aria-hidden="true" /></span>
             <span className="dashboard-overview-copy"><strong>Tuition status</strong><small>{tuitionCounts.complete} paid in full · {tuitionCounts.incomplete} not complete</small></span>
             <span className="dashboard-overview-arrow" aria-hidden="true">→</span>
           </button>
