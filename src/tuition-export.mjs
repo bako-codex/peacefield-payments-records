@@ -62,7 +62,7 @@ export function sortRecordsByClass(records, classKeyForRecord) {
   });
 }
 
-export function createTuitionExportSheets(records, statuses, classKeyForRecord) {
+export function createTuitionExportSheets(records, statuses, classKeyForRecord, examNumbers = new Map()) {
   const students = new Map();
   records.forEach((record) => {
     const key = tuitionStudentKey(record, classKeyForRecord);
@@ -85,18 +85,22 @@ export function createTuitionExportSheets(records, statuses, classKeyForRecord) 
       "Tuition paid (NGN)": paid,
       "Balance (NGN)": rate === null ? null : Math.max(rate - paid, 0),
       state: tuition.state,
+      key,
     });
   });
 
   const allStudents = [...students.values()];
-  const toRow = ({ state, ...row }) => row;
+  const toRow = ({ state, key, ...row }) => ({
+    ...row,
+    ...(state === "complete" ? { "Exam number": examNumbers.get(key) || "" } : {}),
+  });
   return {
     paid: allStudents.filter(({ state }) => state === "complete").map(toRow),
     notPaid: allStudents.filter(({ state }) => state !== "complete").map(toRow),
   };
 }
 
-const columns = [
+const baseColumns = [
   { header: "Student name", key: "Student name", width: 28 },
   { header: "Class", key: "Class", width: 16 },
   { header: "Parent email", key: "Parent email", width: 32 },
@@ -104,6 +108,10 @@ const columns = [
   { header: "Tuition due (NGN)", key: "Tuition due (NGN)", width: 20 },
   { header: "Tuition paid (NGN)", key: "Tuition paid (NGN)", width: 21 },
   { header: "Balance (NGN)", key: "Balance (NGN)", width: 18 },
+];
+const paidColumns = [
+  ...baseColumns,
+  { header: "Exam number", key: "Exam number", width: 18 },
 ];
 
 function escapeXml(value) {
@@ -137,13 +145,13 @@ function cellXml(reference, value, style = "") {
   return `<c r="${reference}"${styleAttribute} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
 }
 
-function worksheetXml(rows, headerStyle) {
-  const headerCells = columns.map((column, index) =>
+function worksheetXml(rows, headerStyle, sheetColumns) {
+  const headerCells = sheetColumns.map((column, index) =>
     cellXml(`${columnName(index)}1`, column.header, headerStyle)).join("");
   const dataRows = rows.map((row, rowIndex) => {
     const rowNumber = rowIndex + 2;
-    const cells = columns.map((column, index) => {
-      const style = index >= 4 ? "3" : "";
+    const cells = sheetColumns.map((column, index) => {
+      const style = column.key.endsWith("(NGN)") ? "3" : "";
       if (
         column.key === "Balance (NGN)" &&
         Number.isFinite(row["Tuition due (NGN)"]) &&
@@ -155,15 +163,16 @@ function worksheetXml(rows, headerStyle) {
     }).join("");
     return `<row r="${rowNumber}">${cells}</row>`;
   }).join("");
-  const widths = columns.map((column, index) =>
+  const widths = sheetColumns.map((column, index) =>
     `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join("");
   const lastRow = rows.length + 1;
+  const lastColumn = columnName(sheetColumns.length - 1);
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>
 <cols>${widths}</cols><sheetData><row r="1" ht="24" customHeight="1">${headerCells}</row>${dataRows}</sheetData>
-<autoFilter ref="A1:G${lastRow}"/>
+<autoFilter ref="A1:${lastColumn}${lastRow}"/>
 </worksheet>`;
 }
 
@@ -204,8 +213,8 @@ export function createTuitionWorkbook({ paid, notPaid }) {
 <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`,
-    "xl/worksheets/sheet1.xml": worksheetXml(paid, "1"),
-    "xl/worksheets/sheet2.xml": worksheetXml(notPaid, "2"),
+    "xl/worksheets/sheet1.xml": worksheetXml(paid, "1", paidColumns),
+    "xl/worksheets/sheet2.xml": worksheetXml(notPaid, "2", baseColumns),
   };
   return zipSync(Object.fromEntries(
     Object.entries(files).map(([path, content]) => [path, strToU8(content)]),

@@ -112,8 +112,11 @@ determine tuition status. Students with no payment record at all are not
 available to the report and need a separate student roster to be listed.
 **Export Excel** downloads a workbook with separate “Paid in full” and “Not
 paid in full” sheets, including student, class, parent email, tuition paid,
-tuition due, and remaining balance. The export follows the current date range
-and active search and filters.
+tuition due, and remaining balance. The paid-in-full sheet also includes a
+unique six-character exam number, generated once and saved so it stays stable
+when first exported and across later exports for the same student, class, and
+parent email. The export follows the current date range and active search and
+filters.
 
 ## Deployment and security notes
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { strFromU8, unzipSync } from "fflate";
 import {
@@ -7,6 +8,9 @@ import {
   getTuitionPaymentAmount,
   sortRecordsByClass,
 } from "../src/tuition-export.mjs";
+
+const require = createRequire(import.meta.url);
+const { createExamNumber, getStudentExamNumberDocumentId } = require("../lib/server/examNumbers.js");
 
 const classKeyForRecord = (value) => String(value ?? "")
   .toLowerCase()
@@ -53,6 +57,19 @@ test("tuition payments use the item summary and transaction total, including out
   }, 30100), 20000);
 });
 
+test("exam numbers are six uppercase letters or digits and student keys hash consistently", () => {
+  const first = createExamNumber();
+  const second = createExamNumber();
+  const studentKey = "ada okafor|basic1|parent@example.com";
+  const documentId = getStudentExamNumberDocumentId(studentKey);
+
+  assert.match(first, /^[A-Z0-9]{6}$/);
+  assert.match(second, /^[A-Z0-9]{6}$/);
+  assert.equal(getStudentExamNumberDocumentId(studentKey), documentId);
+  assert.notEqual(getStudentExamNumberDocumentId(`${studentKey}|different`), documentId);
+  assert.match(documentId, /^[a-f0-9]{64}$/);
+});
+
 test("export sheets group visible student records and separate complete from incomplete tuition", () => {
   const records = [
     { studentName: "Ada Okafor", class: "Basic 1", parentEmail: "parent@example.com" },
@@ -65,11 +82,15 @@ test("export sheets group visible student records and separate complete from inc
     ["bola bello|jss1|other@example.com", { state: "partial", paid: 10000, rate: 36300 }],
     ["chika cole|unknown|third@example.com", { state: "unavailable", paid: 0 }],
   ]);
-  const sheets = createTuitionExportSheets(records, statuses, classKeyForRecord);
+  const sheets = createTuitionExportSheets(records, statuses, classKeyForRecord, new Map([
+    ["ada okafor|basic1|parent@example.com", "A1B2C3"],
+  ]));
 
   assert.equal(sheets.paid.length, 1);
   assert.equal(sheets.paid[0]["Student name"], "Ada Okafor");
+  assert.equal(sheets.paid[0]["Exam number"], "A1B2C3");
   assert.equal(sheets.notPaid.length, 2);
+  assert.equal("Exam number" in sheets.notPaid[0], false);
   assert.equal(sheets.notPaid[0].Status, "Partially paid");
   assert.equal(sheets.notPaid[0]["Balance (NGN)"], 26300);
   assert.equal(sheets.notPaid[1].Status, "Needs review");
@@ -78,7 +99,7 @@ test("export sheets group visible student records and separate complete from inc
 
 test("workbook contains the two named worksheets and exported rows", async () => {
   const buffer = createTuitionWorkbook({
-    paid: [{ "Student name": "Ada Okafor", Class: "Basic 1", "Parent email": "parent@example.com", Status: "Paid in full", "Tuition due (NGN)": 34450, "Tuition paid (NGN)": 34450, "Balance (NGN)": 0 }],
+    paid: [{ "Student name": "Ada Okafor", Class: "Basic 1", "Parent email": "parent@example.com", Status: "Paid in full", "Tuition due (NGN)": 34450, "Tuition paid (NGN)": 34450, "Balance (NGN)": 0, "Exam number": "A1B2C3" }],
     notPaid: [{ "Student name": "Bola Bello", Class: "JSS 1", "Parent email": "other@example.com", Status: "Partially paid", "Tuition due (NGN)": 36300, "Tuition paid (NGN)": 10000, "Balance (NGN)": 26300 }],
   });
   const files = unzipSync(buffer);
@@ -88,6 +109,9 @@ test("workbook contains the two named worksheets and exported rows", async () =>
 
   assert.match(workbook, /name="Paid in full"/);
   assert.match(workbook, /name="Not paid in full"/);
+  assert.match(paidSheet, /<autoFilter ref="A1:H2"\/>/);
+  assert.match(paidSheet, /<t xml:space="preserve">Exam number<\/t>/);
+  assert.match(paidSheet, /<c r="H2" t="inlineStr"><is><t xml:space="preserve">A1B2C3<\/t><\/is><\/c>/);
   assert.match(paidSheet, /<t xml:space="preserve">Ada Okafor<\/t>/);
   assert.match(paidSheet, /<v>34450<\/v>/);
   assert.match(notPaidSheet, /<t xml:space="preserve">Student name<\/t>/);

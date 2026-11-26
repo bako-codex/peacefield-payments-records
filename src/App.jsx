@@ -938,7 +938,24 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     setExportingTuition(true);
     setTuitionExportError("");
     try {
-      const sheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey);
+      const baseSheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey);
+      const studentKeys = baseSheets.paid.map((student) => tuitionStudentKey({
+        studentName: student["Student name"],
+        class: student.Class,
+        parentEmail: student["Parent email"],
+      }, categoryClassKey));
+      if (studentKeys.some((key) => !key)) {
+        throw new Error("Could not identify all paid-in-full students for exam number assignment.");
+      }
+      const { examNumbers: assignedNumbers } = await apiRequest("/api/tuition/exam-numbers", user, {
+        method: "POST",
+        body: JSON.stringify({ studentKeys }),
+      });
+      const examNumbers = new Map(Object.entries(assignedNumbers || {}));
+      if (studentKeys.some((key) => !/^[A-Z0-9]{6}$/.test(examNumbers.get(key) || ""))) {
+        throw new Error("The server did not return valid exam numbers for all paid-in-full students.");
+      }
+      const sheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey, examNumbers);
       if (sheets.paid.length + sheets.notPaid.length === 0) {
         throw new Error("No students in the current results can be exported.");
       }
