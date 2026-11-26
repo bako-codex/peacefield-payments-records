@@ -952,7 +952,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         body: JSON.stringify({ studentKeys }),
       });
       const examNumbers = new Map(Object.entries(assignedNumbers || {}));
-      if (studentKeys.some((key) => !/^[A-Z0-9]{6}$/.test(examNumbers.get(key) || ""))) {
+      if (studentKeys.some((key) => !/^000\d{3}$/.test(examNumbers.get(key) || ""))) {
         throw new Error("The server did not return valid exam numbers for all paid-in-full students.");
       }
       const sheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey, examNumbers);

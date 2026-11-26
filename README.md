@@ -113,10 +113,12 @@ available to the report and need a separate student roster to be listed.
 **Export Excel** downloads a workbook with separate “Paid in full” and “Not
 paid in full” sheets, including student, class, parent email, tuition paid,
 tuition due, and remaining balance. The paid-in-full sheet also includes a
-unique six-character exam number, generated once and saved so it stays stable
-when first exported and across later exports for the same student, class, and
-parent email. The export follows the current date range and active search and
-filters.
+unique numeric exam number in `000###` format (for example, `000201`). The last
+three digits are randomly assigned, checked for uniqueness, and saved so the
+number stays stable across exports for the same student, class, and parent
+email. There are 999 possible suffixes. Existing alphanumeric IDs are replaced
+with numeric IDs on the next export. The export follows the current date range
+and active search and filters.
 
 ## Deployment and security notes
 

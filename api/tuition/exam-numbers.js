@@ -11,7 +11,7 @@ const {
 } = require("../../lib/server/examNumbers");
 
 const MAX_STUDENTS_PER_REQUEST = 300;
-const MAX_NUMBER_ATTEMPTS = 20;
+const MAX_NUMBER_ATTEMPTS = 50;
 const TRANSACTION_CONCURRENCY = 10;
 
 function isValidStudentKey(value) {
@@ -27,34 +27,63 @@ async function getOrCreateExamNumber(db, Timestamp, studentKey, uid) {
 
   return db.runTransaction(async (transaction) => {
     const existing = await transaction.get(studentRef);
+    let previousNumber = null;
+    let previousNumberRef = null;
+    let previousRegistration = null;
     if (existing.exists) {
-      const number = existing.get("examNumber");
-      if (typeof number !== "string" || !/^[A-Z0-9]{6}$/.test(number)) {
+      previousNumber = existing.get("examNumber");
+      if (typeof previousNumber !== "string" || !/^[A-Z0-9]{6}$/.test(previousNumber)) {
         throw new Error("A stored student exam number is invalid.");
       }
-      return number;
+      previousNumberRef = db.collection("examNumberRegistry").doc(previousNumber);
+      previousRegistration = await transaction.get(previousNumberRef);
+      if (/^000\d{3}$/.test(previousNumber) &&
+          (!previousRegistration.exists || previousRegistration.get("studentId") === studentId)) {
+        if (!previousRegistration.exists) {
+          transaction.create(previousNumberRef, {
+            studentId,
+            createdAt: Timestamp.now(),
+            createdBy: uid,
+          });
+        }
+        return previousNumber;
+      }
     }
 
+    const attemptedNumbers = new Set();
     for (let attempt = 0; attempt < MAX_NUMBER_ATTEMPTS; attempt += 1) {
       const number = createExamNumber();
+      if (attemptedNumbers.has(number)) continue;
+      attemptedNumbers.add(number);
       const numberRef = db.collection("examNumberRegistry").doc(number);
       const registered = await transaction.get(numberRef);
       if (registered.exists) continue;
 
-      transaction.create(studentRef, {
-        examNumber: number,
-        createdAt: Timestamp.now(),
-        createdBy: uid,
-      });
       transaction.create(numberRef, {
         studentId,
         createdAt: Timestamp.now(),
         createdBy: uid,
       });
+      if (existing.exists) {
+        transaction.update(studentRef, {
+          examNumber: number,
+          updatedAt: Timestamp.now(),
+          updatedBy: uid,
+        });
+        if (previousRegistration?.exists && previousRegistration.get("studentId") === studentId) {
+          transaction.delete(previousNumberRef);
+        }
+      } else {
+        transaction.create(studentRef, {
+          examNumber: number,
+          createdAt: Timestamp.now(),
+          createdBy: uid,
+        });
+      }
       return number;
     }
 
-    throw new Error("Could not allocate a unique exam number. Please try again.");
+    throw new Error("Could not allocate a unique numeric exam number. Please try again.");
   });
 }
 
