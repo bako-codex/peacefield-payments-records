@@ -20,6 +20,15 @@ const classGroups = [
 const classOrder = new Map(classGroups.flatMap((group, rank) =>
   group.map((classKey) => [classKey, rank])));
 
+const rosterTuitionRates = {
+  jss1: 36300,
+  jss2: 36300,
+  jss3: 46000,
+  ss1: 37300,
+  ss2: 37300,
+  ss3: 40500,
+};
+
 export function getCategoryFeeItems(summary) {
   const pattern = /(?:(\d+(?:\.\d+)?)\s*x\s+)?(tuition|lesson|social)\s+fee\b/gi;
   return [...String(summary ?? "").matchAll(pattern)].map((match) => ({
@@ -47,8 +56,11 @@ export function tuitionStudentKey(record, classKeyForRecord) {
   const name = String(record.studentName ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
   const classKey = classKeyForRecord(record.class);
   if (!name || !classKey) return null;
-  const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
-  return `${name}|${classKey}|${parentEmail}`;
+  return `${name}|${classKey}`;
+}
+
+export function normalizeStudentName(name) {
+  return String(name ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 export function sortRecordsByClass(records, classKeyForRecord) {
@@ -62,12 +74,21 @@ export function sortRecordsByClass(records, classKeyForRecord) {
   });
 }
 
-export function createTuitionExportSheets(records, statuses, classKeyForRecord, examNumbers = new Map()) {
+export function createTuitionExportSheets(records, statuses, classKeyForRecord, examNumbers = new Map(), roster = []) {
   const students = new Map();
-  records.forEach((record) => {
+  const sourceRecords = roster.length ? roster.map((student) => ({
+    studentName: student.name,
+    class: student.className,
+    parentEmail: "",
+  })) : records;
+  sourceRecords.forEach((record) => {
     const key = tuitionStudentKey(record, classKeyForRecord);
     if (!key || students.has(key)) return;
-    const tuition = statuses.get(key) || { state: "unavailable", paid: 0 };
+    const tuition = statuses.get(key) || {
+      state: roster.length ? "unpaid" : "unavailable",
+      paid: 0,
+      rate: roster.length ? rosterTuitionRates[classKeyForRecord(record.class)] : undefined,
+    };
     const labels = {
       complete: "Paid in full",
       partial: "Partially paid",
@@ -92,7 +113,7 @@ export function createTuitionExportSheets(records, statuses, classKeyForRecord, 
   const allStudents = [...students.values()];
   const toRow = ({ state, key, ...row }) => ({
     ...row,
-    ...(state === "complete" ? { "Exam number": examNumbers.get(key) || "" } : {}),
+    "Exam number": examNumbers.get(key) || "",
   });
   return {
     paid: allStudents.filter(({ state }) => state === "complete").map(toRow),
@@ -108,9 +129,6 @@ const baseColumns = [
   { header: "Tuition due (NGN)", key: "Tuition due (NGN)", width: 20 },
   { header: "Tuition paid (NGN)", key: "Tuition paid (NGN)", width: 21 },
   { header: "Balance (NGN)", key: "Balance (NGN)", width: 18 },
-];
-const paidColumns = [
-  ...baseColumns,
   { header: "Exam number", key: "Exam number", width: 18 },
 ];
 
@@ -213,7 +231,7 @@ export function createTuitionWorkbook({ paid, notPaid }) {
 <cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`,
-    "xl/worksheets/sheet1.xml": worksheetXml(paid, "1", paidColumns),
+    "xl/worksheets/sheet1.xml": worksheetXml(paid, "1", baseColumns),
     "xl/worksheets/sheet2.xml": worksheetXml(notPaid, "2", baseColumns),
   };
   return zipSync(Object.fromEntries(

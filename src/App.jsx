@@ -760,6 +760,8 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
   const [accessError, setAccessError] = useState("");
   const [accessExpiresAt, setAccessExpiresAt] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [studentRoster, setStudentRoster] = useState([]);
+  const [rosterExamNumbers, setRosterExamNumbers] = useState(new Map());
   const [clock, setClock] = useState(Date.now());
   const expiryHandled = useRef(false);
   const onAccessExpiredRef = useRef(onAccessExpired);
@@ -776,6 +778,20 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       })
       .catch((lookupError) => {
         if (active) setAccessError(lookupError.message);
+      });
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest("/api/tuition/roster", user)
+      .then((result) => {
+        if (!active) return;
+        setStudentRoster(Array.isArray(result.students) ? result.students : []);
+        setRosterExamNumbers(new Map(Object.entries(result.examNumbers || {})));
+      })
+      .catch((rosterError) => {
+        if (active) setTuitionExportError(rosterError.message);
       });
     return () => { active = false; };
   }, [user]);
@@ -938,24 +954,26 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
     setExportingTuition(true);
     setTuitionExportError("");
     try {
-      const baseSheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey);
-      const studentKeys = baseSheets.paid.map((student) => tuitionStudentKey({
-        studentName: student["Student name"],
-        class: student.Class,
-        parentEmail: student["Parent email"],
-      }, categoryClassKey));
-      if (studentKeys.some((key) => !key)) {
-        throw new Error("Could not identify all paid-in-full students for exam number assignment.");
+      const rosterResult = studentRoster.length
+        ? { students: studentRoster, examNumbers: Object.fromEntries(rosterExamNumbers) }
+        : await apiRequest("/api/tuition/roster", user);
+      const examNumbers = new Map(Object.entries(rosterResult.examNumbers || {}));
+      if (rosterResult.students.length !== 153) {
+        throw new Error("The student roster is incomplete. Please contact an administrator.");
       }
-      const { examNumbers: assignedNumbers } = await apiRequest("/api/tuition/exam-numbers", user, {
-        method: "POST",
-        body: JSON.stringify({ studentKeys }),
-      });
-      const examNumbers = new Map(Object.entries(assignedNumbers || {}));
-      if (studentKeys.some((key) => !/^000\d{3}$/.test(examNumbers.get(key) || ""))) {
-        throw new Error("The server did not return valid exam numbers for all paid-in-full students.");
+      if (rosterResult.students.some((student) => {
+        const key = `${student.name.trim().replace(/\s+/g, " ").toLocaleLowerCase()}|${student.className.toLocaleLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        return !/^000\d{3}$/.test(examNumbers.get(key) || "");
+      })) {
+        throw new Error("The server did not return valid exam numbers for all rostered students.");
       }
-      const sheets = createTuitionExportSheets(visibleRecords, tuitionStatuses, categoryClassKey, examNumbers);
+      const sheets = createTuitionExportSheets(
+        visibleRecords,
+        tuitionStatuses,
+        categoryClassKey,
+        examNumbers,
+        rosterResult.students,
+      );
       if (sheets.paid.length + sheets.notPaid.length === 0) {
         throw new Error("No students in the current results can be exported.");
       }
@@ -1146,7 +1164,7 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
             <div><span className="eyebrow">SESSION SUMMARY</span><h2>Tuition status</h2></div>
             <div className="tuition-status-actions">
               <p>Tuition payments are calculated within the selected dates; active filters limit the students counted.</p>
-              <button className="export-excel-button" type="button" onClick={exportTuitionWorkbook} disabled={loading || exportingTuition || visibleRecords.length === 0}>
+              <button className="export-excel-button" type="button" onClick={exportTuitionWorkbook} disabled={loading || exportingTuition}>
                 <FaFileExcel aria-hidden="true" />
                 {exportingTuition ? "Preparing workbook…" : "Export Excel"}
               </button>

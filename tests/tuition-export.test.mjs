@@ -11,6 +11,7 @@ import {
 
 const require = createRequire(import.meta.url);
 const { createExamNumber, getStudentExamNumberDocumentId } = require("../lib/server/examNumbers.js");
+const { studentRoster } = require("../lib/server/studentRoster.js");
 
 const classKeyForRecord = (value) => String(value ?? "")
   .toLowerCase()
@@ -80,23 +81,38 @@ test("export sheets group visible student records and separate complete from inc
     { studentName: "Chika Cole", class: "Unknown", parentEmail: "third@example.com" },
   ];
   const statuses = new Map([
-    ["ada okafor|basic1|parent@example.com", { state: "complete", paid: 34450, rate: 34450 }],
-    ["bola bello|jss1|other@example.com", { state: "partial", paid: 10000, rate: 36300 }],
-    ["chika cole|unknown|third@example.com", { state: "unavailable", paid: 0 }],
+    ["ada okafor|basic1", { state: "complete", paid: 34450, rate: 34450 }],
+    ["bola bello|jss1", { state: "partial", paid: 10000, rate: 36300 }],
+    ["chika cole|unknown", { state: "unavailable", paid: 0 }],
   ]);
   const sheets = createTuitionExportSheets(records, statuses, classKeyForRecord, new Map([
-    ["ada okafor|basic1|parent@example.com", "000201"],
+    ["ada okafor|basic1", "000201"],
   ]));
 
   assert.equal(sheets.paid.length, 1);
   assert.equal(sheets.paid[0]["Student name"], "Ada Okafor");
   assert.equal(sheets.paid[0]["Exam number"], "000201");
   assert.equal(sheets.notPaid.length, 2);
-  assert.equal("Exam number" in sheets.notPaid[0], false);
+  assert.equal(sheets.notPaid[0]["Exam number"], "");
   assert.equal(sheets.notPaid[0].Status, "Partially paid");
   assert.equal(sheets.notPaid[0]["Balance (NGN)"], 26300);
   assert.equal(sheets.notPaid[1].Status, "Needs review");
   assert.equal(sheets.notPaid[1]["Balance (NGN)"], null);
+});
+
+test("roster export includes every supplied JSS and SS student with a numeric exam number", () => {
+  assert.equal(studentRoster.length, 153);
+  const examNumbers = new Map(studentRoster.map((student, index) => [
+    `${student.name.toLocaleLowerCase()}|${student.className.toLocaleLowerCase().replace(/[^a-z0-9]/g, "")}`,
+    `000${String(index + 1).padStart(3, "0")}`,
+  ]));
+  const sheets = createTuitionExportSheets([], new Map(), classKeyForRecord, examNumbers, studentRoster);
+
+  assert.equal(sheets.paid.length, 0);
+  assert.equal(sheets.notPaid.length, 153);
+  assert.equal(sheets.notPaid[0]["Student name"], "Amanie Joseph");
+  assert.equal(sheets.notPaid[0].Class, "JSS1");
+  assert.equal(sheets.notPaid[0]["Exam number"], "000001");
 });
 
 test("workbook contains the two named worksheets and exported rows", async () => {
