@@ -100,19 +100,32 @@ test("export sheets group visible student records and separate complete from inc
   assert.equal(sheets.notPaid[1]["Balance (NGN)"], null);
 });
 
-test("roster export includes every supplied JSS and SS student with a numeric exam number", () => {
+test("roster export retains previous payment students and includes their saved exam numbers", () => {
   assert.equal(studentRoster.length, 153);
   const examNumbers = new Map(studentRoster.map((student, index) => [
     `${student.name.toLocaleLowerCase()}|${student.className.toLocaleLowerCase().replace(/[^a-z0-9]/g, "")}`,
     `000${String(index + 1).padStart(3, "0")}`,
   ]));
-  const sheets = createTuitionExportSheets([], new Map(), classKeyForRecord, examNumbers, studentRoster);
+  examNumbers.set("previous student|jss1", "000999");
+  const records = [
+    { studentName: "Amanie Joseph", class: "JSS 1", parentEmail: "amanie@example.com" },
+    { studentName: "Previous Student", class: "JSS 1", parentEmail: "previous@example.com" },
+  ];
+  const statuses = new Map([
+    ["amanie joseph|jss1", { state: "complete", paid: 36300, rate: 36300 }],
+    ["previous student|jss1", { state: "complete", paid: 36300, rate: 36300 }],
+  ]);
+  const sheets = createTuitionExportSheets(records, statuses, classKeyForRecord, examNumbers, studentRoster);
 
-  assert.equal(sheets.paid.length, 0);
-  assert.equal(sheets.notPaid.length, 153);
-  assert.equal(sheets.notPaid[0]["Student name"], "Amanie Joseph");
-  assert.equal(sheets.notPaid[0].Class, "JSS1");
-  assert.equal(sheets.notPaid[0]["Exam number"], "000001");
+  assert.equal(sheets.paid.length, 2);
+  assert.equal(sheets.paid[0]["Student name"], "Amanie Joseph");
+  assert.equal(sheets.paid[0]["Parent email"], "amanie@example.com");
+  assert.equal(sheets.paid[0]["Exam number"], "000001");
+  assert.equal(sheets.paid[1]["Student name"], "Previous Student");
+  assert.equal(sheets.paid[1]["Exam number"], "000999");
+  assert.equal(sheets.notPaid.length, 152);
+  assert.equal(sheets.notPaid[0]["Student name"], "Elochukwu David");
+  assert.equal(sheets.notPaid[0]["Exam number"], "000002");
 });
 
 test("workbook contains the two named worksheets and exported rows", async () => {

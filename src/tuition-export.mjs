@@ -75,19 +75,35 @@ export function sortRecordsByClass(records, classKeyForRecord) {
 }
 
 export function createTuitionExportSheets(records, statuses, classKeyForRecord, examNumbers = new Map(), roster = []) {
-  const students = new Map();
-  const sourceRecords = roster.length ? roster.map((student) => ({
-    studentName: student.name,
-    class: student.className,
-    parentEmail: "",
-  })) : records;
-  sourceRecords.forEach((record) => {
+  const sourceRecords = new Map();
+  roster.forEach((student) => {
+    const record = {
+      studentName: student.name,
+      class: student.className,
+      parentEmail: "",
+    };
     const key = tuitionStudentKey(record, classKeyForRecord);
-    if (!key || students.has(key)) return;
+    if (key) sourceRecords.set(key, record);
+  });
+  records.forEach((record) => {
+    const key = tuitionStudentKey(record, classKeyForRecord);
+    if (!key) return;
+    const rosterRecord = sourceRecords.get(key);
+    if (rosterRecord) {
+      if (!rosterRecord.parentEmail && record.parentEmail) {
+        rosterRecord.parentEmail = String(record.parentEmail).trim();
+      }
+      return;
+    }
+    sourceRecords.set(key, record);
+  });
+
+  const students = new Map();
+  sourceRecords.forEach((record, key) => {
     const tuition = statuses.get(key) || {
       state: roster.length ? "unpaid" : "unavailable",
       paid: 0,
-      rate: roster.length ? rosterTuitionRates[classKeyForRecord(record.class)] : undefined,
+      rate: rosterTuitionRates[classKeyForRecord(record.class)],
     };
     const labels = {
       complete: "Paid in full",

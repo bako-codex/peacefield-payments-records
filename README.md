@@ -112,14 +112,14 @@ determine tuition status. Students with no payment record at all are not
 available to the report and need a separate student roster to be listed.
 **Export Excel** downloads a workbook with separate “Paid in full” and “Not
 paid in full” sheets, including student, class, parent email, tuition paid,
-tuition due, and remaining balance. Both sheets include all 153 supplied JSS
-and SS students with a unique numeric exam number in `000###` format (for
-example, `000201`). The last
+tuition due, and remaining balance. It combines all 153 supplied JSS and SS
+students with students in the loaded payment records, so previously recorded
+students outside the supplied roster remain included. Every row receives a
+unique numeric exam number in `000###` format (for example, `000201`). The last
 three digits are randomly assigned, checked for uniqueness, and saved so the
-number stays stable across exports for the same student, class, and parent
-email. There are 999 possible suffixes. Existing alphanumeric IDs are replaced
-with numeric IDs on the next export. The export follows the current date range
-and active search and filters.
+number stays stable across exports. There are 999 possible suffixes. Existing
+alphanumeric IDs are replaced with numeric IDs on the next export. The export
+follows the current date range and active search and filters.
 
 ## Deployment and security notes
 

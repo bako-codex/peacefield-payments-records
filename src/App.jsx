@@ -961,11 +961,23 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
       if (rosterResult.students.length !== 153) {
         throw new Error("The student roster is incomplete. Please contact an administrator.");
       }
-      if (rosterResult.students.some((student) => {
-        const key = `${student.name.trim().replace(/\s+/g, " ").toLocaleLowerCase()}|${student.className.toLocaleLowerCase().replace(/[^a-z0-9]/g, "")}`;
-        return !/^000\d{3}$/.test(examNumbers.get(key) || "");
-      })) {
-        throw new Error("The server did not return valid exam numbers for all rostered students.");
+      const studentKeys = new Set([
+        ...rosterResult.students.map((student) => tuitionStudentKey({
+          studentName: student.name,
+          class: student.className,
+        }, categoryClassKey)),
+        ...visibleRecords.map((record) => tuitionStudentKey(record, categoryClassKey)),
+      ].filter(Boolean));
+      const unassignedKeys = [...studentKeys].filter((key) => !examNumbers.has(key));
+      for (let index = 0; index < unassignedKeys.length; index += 300) {
+        const { examNumbers: assigned } = await apiRequest("/api/tuition/exam-numbers", user, {
+          method: "POST",
+          body: JSON.stringify({ studentKeys: unassignedKeys.slice(index, index + 300) }),
+        });
+        Object.entries(assigned || {}).forEach(([key, number]) => examNumbers.set(key, number));
+      }
+      if ([...studentKeys].some((key) => !/^000\d{3}$/.test(examNumbers.get(key) || ""))) {
+        throw new Error("The server did not return valid exam numbers for every exported student.");
       }
       const sheets = createTuitionExportSheets(
         visibleRecords,
