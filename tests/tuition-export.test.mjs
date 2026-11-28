@@ -6,6 +6,7 @@ import {
   createTuitionExportSheets,
   createTuitionWorkbook,
   getTuitionPaymentAmount,
+  legacyTuitionStudentKey,
   sortRecordsByClass,
 } from "../src/tuition-export.mjs";
 
@@ -56,6 +57,14 @@ test("tuition payments use the item summary and transaction total, including out
     itemsSummary: "Tuition fee",
     total: "NGN 20,000",
   }, 30100), 20000);
+});
+
+test("legacy exam ID lookup preserves the previous parent-email student key", () => {
+  assert.equal(legacyTuitionStudentKey({
+    studentName: "Ada  Okafor",
+    class: "JSS 1",
+    parentEmail: " Parent@Example.com ",
+  }, classKeyForRecord), "ada okafor|jss1|parent@example.com");
 });
 
 test("exam numbers use the 000 prefix and a unique three-digit format", () => {

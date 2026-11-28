@@ -59,6 +59,13 @@ export function tuitionStudentKey(record, classKeyForRecord) {
   return `${name}|${classKey}`;
 }
 
+export function legacyTuitionStudentKey(record, classKeyForRecord) {
+  const key = tuitionStudentKey(record, classKeyForRecord);
+  if (!key) return null;
+  const parentEmail = String(record.parentEmail ?? "").trim().toLocaleLowerCase();
+  return `${key}|${parentEmail}`;
+}
+
 export function normalizeStudentName(name) {
   return String(name ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }

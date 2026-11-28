@@ -19,6 +19,7 @@ import {
   createTuitionWorkbook,
   getCategoryFeeItems,
   getTuitionPaymentAmount,
+  legacyTuitionStudentKey,
   sortRecordsByClass,
   tuitionStudentKey,
 } from "./tuition-export.mjs";
@@ -968,11 +969,23 @@ function Dashboard({ user, onSignOut, onAccessExpired }) {
         }, categoryClassKey)),
         ...visibleRecords.map((record) => tuitionStudentKey(record, categoryClassKey)),
       ].filter(Boolean));
-      const unassignedKeys = [...studentKeys].filter((key) => !examNumbers.has(key));
-      for (let index = 0; index < unassignedKeys.length; index += 300) {
+      const legacyKeysByStudent = new Map();
+      records.forEach((record) => {
+        const key = tuitionStudentKey(record, categoryClassKey);
+        const legacyKey = legacyTuitionStudentKey(record, categoryClassKey);
+        if (!key || !legacyKey) return;
+        const legacyKeys = legacyKeysByStudent.get(key) || [];
+        if (!legacyKeys.includes(legacyKey)) legacyKeys.push(legacyKey);
+        legacyKeysByStudent.set(key, legacyKeys);
+      });
+      const studentsToResolve = [...studentKeys].map((studentKey) => ({
+        studentKey,
+        legacyStudentKeys: legacyKeysByStudent.get(studentKey) || [],
+      }));
+      for (let index = 0; index < studentsToResolve.length; index += 300) {
         const { examNumbers: assigned } = await apiRequest("/api/tuition/exam-numbers", user, {
           method: "POST",
-          body: JSON.stringify({ studentKeys: unassignedKeys.slice(index, index + 300) }),
+          body: JSON.stringify({ students: studentsToResolve.slice(index, index + 300) }),
         });
         Object.entries(assigned || {}).forEach(([key, number]) => examNumbers.set(key, number));
       }
